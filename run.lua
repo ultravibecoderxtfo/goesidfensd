@@ -3,9 +3,15 @@ local NONCE = tostring(os.time()) .. tostring(math.random(100000, 999999))
 
 local function notify(text)
 	pcall(function()
-		game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Altas", Text = tostring(text), Duration = 8 })
+		game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Altas", Text = tostring(text), Duration = 10 })
 	end)
 end
+
+-- Empty string, not nil: the UI assigns this straight to an Image property.
+_G.background = ""
+_G.unlocktween = true
+if getgenv then pcall(function() getgenv().unlocktween = true end) end
+if getrenv then pcall(function() getrenv().unlocktween = true end) end
 
 local function roots()
 	local list = {}
@@ -23,9 +29,8 @@ local function roots()
 	return list
 end
 
--- Keep stripping the background for the first 40 seconds of the session.
 task.spawn(function()
-	for _ = 1, 26 do
+	for _ = 1, 20 do
 		task.wait(1.5)
 
 		pcall(function()
@@ -38,6 +43,7 @@ task.spawn(function()
 			for _, root in ipairs(roots()) do
 				for _, object in ipairs(root:GetDescendants()) do
 					if object:IsA("ImageLabel") and object.Image ~= ""
+						and #object:GetChildren() == 0
 						and object.AbsoluteSize.X > 250 and object.AbsoluteSize.Y > 180 then
 						object.Image = ""
 					end
@@ -84,4 +90,10 @@ if not chunk then
 end
 
 notify("Altas loaded " .. NONCE)
-chunk()
+
+local ok, runtimeError = pcall(chunk)
+
+if not ok then
+	notify("script error: " .. tostring(runtimeError))
+	print("[Altas] script error: " .. tostring(runtimeError))
+end
