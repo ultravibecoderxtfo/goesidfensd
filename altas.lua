@@ -9,10 +9,17 @@
 --   * tween speed clamp removed (not just unlocked)
 --   * walk slider applies WalkSpeed on every change, up and down
 --   * black-screen anti-lag HUD with uptime, server uptime, honey, rate, heading
---   * auto server hop (10 min default) and rejoin (10 min default) with sliders
+--   * auto server hop / rejoin, driven from the debug console (no extra UI)
 --
 -- Run (add ?v= to skip any cached copy):
---   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=10"))()
+--   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=11"))()
+--
+-- Debug console:
+--   _G.atlasAutomation.hop(10)      auto server hop every 10 min
+--   _G.atlasAutomation.rejoin(10)   auto rejoin every 10 min
+--   _G.atlasAutomation.stopHop()    _G.atlasAutomation.stopRejoin()
+--   _G.atlasAutomation.status()
+--   _G.atlasHud(true)               show the black-screen HUD now, false hides it
 
 local REPO = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/"
 local NONCE = tostring(os.time()) .. tostring(math.random(1000, 9999))
@@ -132,6 +139,7 @@ do
 	rows.honey = addLabel("Session Honey: 0")
 	rows.rate = addLabel("Honey per Hour: 0")
 	rows.heading = addLabel("Heading: -", 13, Color3.fromRGB(180, 220, 255))
+	rows.auto = addLabel("", 12, Color3.fromRGB(190, 200, 150))
 
 	local function formatTime(seconds)
 		seconds = math.max(0, math.floor(tonumber(seconds) or 0))
@@ -233,23 +241,134 @@ do
 		rows.server.Text = "Server Uptime: " .. formatTime(workspace.DistributedGameTime)
 		rows.honey.Text = "Session Honey: " .. formatNumber(gained)
 		rows.rate.Text = "Honey per Hour: " .. formatNumber(session > 5 and gained / (session / 3600) or 0)
+		rows.auto.Text = _G.atlasAutomationStatus or ""
 
 		local heading = lastConsoleLine()
 		rows.heading.Text = "Heading: " .. (heading and string.sub(heading, 1, 42) or "-")
 	end
 
-	HUD = {}
-	HUD.gui = gui
-	HUD.show = function(visible)
+	local function isBlackFullScreen(object)
+		if not object:IsA("Frame") or not object.Visible or object.BackgroundTransparency > 0.05 then
+			return false
+		end
+
+		if object:IsDescendantOf(gui) then
+			return false
+		end
+
+		local color = object.BackgroundColor3
+
+		if color.R > 0.03 or color.G > 0.03 or color.B > 0.03 then
+			return false
+		end
+
+		local camera = workspace.CurrentCamera
+		local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+		local size = object.AbsoluteSize
+
+		return size.X >= viewport.X * 0.98 and size.Y >= viewport.Y * 0.98
+	end
+
+	local function blackScreenShowing()
+		local roots = {}
+		local seen = {}
+
+		local function addRoot(root)
+			if root and not seen[root] then
+				seen[root] = true
+				table.insert(roots, root)
+			end
+		end
+
+		addRoot(_G.atlas)
+
+		if _G.atlas and _G.atlas.Parent then
+			for _, sibling in ipairs(_G.atlas.Parent:GetChildren()) do
+				if sibling:IsA("ScreenGui") then
+					addRoot(sibling)
+				end
+			end
+		end
+
+		local ok, coreGui = pcall(function()
+			return game:GetService("CoreGui")
+		end)
+
+		if ok and coreGui then
+			for _, child in ipairs(coreGui:GetChildren()) do
+				if child:IsA("ScreenGui") then
+					addRoot(child)
+				end
+			end
+		end
+
+		local playerGui = player:FindFirstChild("PlayerGui")
+
+		if playerGui then
+			for _, child in ipairs(playerGui:GetChildren()) do
+				if child:IsA("ScreenGui") then
+					addRoot(child)
+				end
+			end
+		end
+
+		for _, root in ipairs(roots) do
+			for _, object in ipairs(root:GetDescendants()) do
+				if isBlackFullScreen(object) then
+					return true
+				end
+			end
+		end
+
+		return false
+	end
+
+	local manual = nil
+	local hookVisible = false
+	local autoVisible = false
+
+	local function apply()
+		local visible
+
+		if manual ~= nil then
+			visible = manual
+		else
+			visible = hookVisible or autoVisible
+		end
+
 		gui.Enabled = visible and true or false
 
 		if gui.Enabled then
 			pcall(refresh)
 		end
 	end
-	HUD.refresh = refresh
 
-	_G.atlasHud = HUD.show
+	HUD = {}
+	HUD.gui = gui
+	HUD.setHook = function(enabled)
+		hookVisible = not enabled
+		apply()
+	end
+
+	_G.atlasHud = function(visible)
+		manual = visible
+		apply()
+	end
+
+	task.spawn(function()
+		while true do
+			task.wait(1)
+
+			if manual == nil then
+				local ok, detected = pcall(blackScreenShowing)
+
+				if ok then
+					autoVisible = detected
+					apply()
+				end
+			end
+		end
+	end)
 
 	task.spawn(function()
 		while true do
@@ -268,7 +387,6 @@ do
 	local Players = game:GetService("Players")
 	local TeleportService = game:GetService("TeleportService")
 	local HttpService = game:GetService("HttpService")
-	local UserInputService = game:GetService("UserInputService")
 	local player = Players.LocalPlayer
 	local accountId = tostring(player.UserId)
 	local settingsPath = "atlas/accounts/" .. accountId .. "/automation.json"
@@ -374,231 +492,72 @@ do
 		end)
 	end
 
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "AltasAutomation"
-	gui.ResetOnSpawn = false
-	gui.DisplayOrder = 90
-	gui.Parent = gethui and gethui() or game:GetService("CoreGui")
-
-	local frame = Instance.new("Frame")
-	frame.Position = UDim2.new(0, 20, 1, -216)
-	frame.Size = UDim2.new(0, 250, 0, 196)
-	frame.BackgroundColor3 = Color3.fromRGB(16, 16, 18)
-	frame.BackgroundTransparency = 0.1
-	frame.BorderSizePixel = 0
-	frame.Parent = gui
-
-	local frameCorner = Instance.new("UICorner")
-	frameCorner.CornerRadius = UDim.new(0, 6)
-	frameCorner.Parent = frame
-
-	local header = Instance.new("TextButton")
-	header.Size = UDim2.new(1, 0, 0, 26)
-	header.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
-	header.BorderSizePixel = 0
-	header.Font = Enum.Font.Code
-	header.TextSize = 13
-	header.TextColor3 = Color3.fromRGB(235, 235, 235)
-	header.TextXAlignment = Enum.TextXAlignment.Left
-	header.Text = "  Altas Automation"
-	header.Parent = frame
-
-	local headerCorner = Instance.new("UICorner")
-	headerCorner.CornerRadius = UDim.new(0, 6)
-	headerCorner.Parent = header
-
-	local collapse = Instance.new("TextButton")
-	collapse.AnchorPoint = Vector2.new(1, 0)
-	collapse.Position = UDim2.new(1, -6, 0, 3)
-	collapse.Size = UDim2.new(0, 20, 0, 20)
-	collapse.BackgroundTransparency = 1
-	collapse.Font = Enum.Font.Code
-	collapse.TextSize = 16
-	collapse.TextColor3 = Color3.fromRGB(200, 200, 200)
-	collapse.Text = "-"
-	collapse.Parent = header
-
-	local content = Instance.new("Frame")
-	content.Position = UDim2.new(0, 8, 0, 34)
-	content.Size = UDim2.new(1, -16, 1, -42)
-	content.BackgroundTransparency = 1
-	content.Parent = frame
-
-	local contentLayout = Instance.new("UIListLayout")
-	contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	contentLayout.Padding = UDim.new(0, 4)
-	contentLayout.Parent = content
-
-	local order = 0
-
-	local function makeToggle(text, value, onChange)
-		order += 1
-
-		local button = Instance.new("TextButton")
-		button.LayoutOrder = order
-		button.Size = UDim2.new(1, 0, 0, 26)
-		button.BackgroundColor3 = value and Color3.fromRGB(52, 92, 64) or Color3.fromRGB(40, 40, 44)
-		button.BorderSizePixel = 0
-		button.Font = Enum.Font.Code
-		button.TextSize = 12
-		button.TextColor3 = Color3.fromRGB(235, 235, 235)
-		button.TextXAlignment = Enum.TextXAlignment.Left
-		button.Text = "  " .. text .. ": " .. (value and "ON" or "OFF")
-		button.Parent = content
-
-		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0, 4)
-		corner.Parent = button
-
-		local state = value
-
-		button.MouseButton1Click:Connect(function()
-			state = not state
-			button.Text = "  " .. text .. ": " .. (state and "ON" or "OFF")
-			button.BackgroundColor3 = state and Color3.fromRGB(52, 92, 64) or Color3.fromRGB(40, 40, 44)
-			onChange(state)
-		end)
-	end
-
-	local function makeSlider(text, minValue, maxValue, initial, onChange)
-		order += 1
-
-		local row = Instance.new("Frame")
-		row.LayoutOrder = order
-		row.Size = UDim2.new(1, 0, 0, 36)
-		row.BackgroundTransparency = 1
-		row.Parent = content
-
-		local label = Instance.new("TextLabel")
-		label.BackgroundTransparency = 1
-		label.Font = Enum.Font.Code
-		label.TextSize = 12
-		label.TextColor3 = Color3.fromRGB(220, 220, 220)
-		label.TextXAlignment = Enum.TextXAlignment.Left
-		label.Size = UDim2.new(1, 0, 0, 14)
-		label.Text = text .. ": " .. initial .. " min"
-		label.Parent = row
-
-		local bar = Instance.new("Frame")
-		bar.Position = UDim2.new(0, 0, 0, 22)
-		bar.Size = UDim2.new(1, 0, 0, 8)
-		bar.BackgroundColor3 = Color3.fromRGB(48, 48, 54)
-		bar.BorderSizePixel = 0
-		bar.Parent = row
-
-		local barCorner = Instance.new("UICorner")
-		barCorner.CornerRadius = UDim.new(1, 0)
-		barCorner.Parent = bar
-
-		local fill = Instance.new("Frame")
-		fill.Size = UDim2.fromScale((initial - minValue) / math.max(maxValue - minValue, 1), 1)
-		fill.BackgroundColor3 = Color3.fromRGB(120, 170, 255)
-		fill.BorderSizePixel = 0
-		fill.Parent = bar
-
-		local fillCorner = Instance.new("UICorner")
-		fillCorner.CornerRadius = UDim.new(1, 0)
-		fillCorner.Parent = fill
-
-		local current = initial
-		local dragging = false
-
-		local function apply(x)
-			local relative = math.clamp((x - bar.AbsolutePosition.X) / math.max(bar.AbsoluteSize.X, 1), 0, 1)
-			local value = math.floor(minValue + (maxValue - minValue) * relative + 0.5)
-
-			if value ~= current then
-				current = value
-				label.Text = text .. ": " .. value .. " min"
-				fill.Size = UDim2.fromScale((value - minValue) / math.max(maxValue - minValue, 1), 1)
-				onChange(value)
-			end
-		end
-
-		bar.InputBegan:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-				dragging = true
-				apply(input.Position.X)
-			end
-		end)
-
-		UserInputService.InputChanged:Connect(function(input)
-			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-				apply(input.Position.X)
-			end
-		end)
-
-		UserInputService.InputEnded:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-				dragging = false
-			end
-		end)
-	end
-
-	makeToggle("Auto Server Hop", settings.hopEnabled, function(state)
-		settings.hopEnabled = state
-		dirty = true
-	end)
-
-	makeSlider("Hop every", 1, 60, settings.hopMinutes, function(value)
-		settings.hopMinutes = value
-		dirty = true
-	end)
-
-	makeToggle("Auto Rejoin", settings.rejoinEnabled, function(state)
-		settings.rejoinEnabled = state
-		dirty = true
-	end)
-
-	makeSlider("Rejoin every", 1, 60, settings.rejoinMinutes, function(value)
-		settings.rejoinMinutes = value
-		dirty = true
-	end)
-
-	order += 1
-
-	local status = Instance.new("TextLabel")
-	status.LayoutOrder = order
-	status.Size = UDim2.new(1, 0, 0, 18)
-	status.BackgroundTransparency = 1
-	status.Font = Enum.Font.Code
-	status.TextSize = 11
-	status.TextColor3 = Color3.fromRGB(160, 200, 160)
-	status.TextXAlignment = Enum.TextXAlignment.Left
-	status.Text = "Idle"
-	status.Parent = content
-
-	collapse.MouseButton1Click:Connect(function()
-		content.Visible = not content.Visible
-		frame.Size = content.Visible and UDim2.new(0, 250, 0, 196) or UDim2.new(0, 250, 0, 26)
-		collapse.Text = content.Visible and "-" or "+"
-	end)
-
-	local draggingFrame = false
-	local dragStart = nil
-	local dragOrigin = nil
-
-	header.MouseButton1Down:Connect(function()
-		draggingFrame = true
-		dragStart = UserInputService:GetMouseLocation()
-		dragOrigin = frame.Position
-	end)
-
-	UserInputService.InputChanged:Connect(function(input)
-		if draggingFrame and input.UserInputType == Enum.UserInputType.MouseMovement then
-			local delta = UserInputService:GetMouseLocation() - dragStart
-			frame.Position = UDim2.new(dragOrigin.X.Scale, dragOrigin.X.Offset + delta.X, dragOrigin.Y.Scale, dragOrigin.Y.Offset + delta.Y)
-		end
-	end)
-
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			draggingFrame = false
-		end
-	end)
-
 	local hopRemaining = settings.hopMinutes * 60
 	local rejoinRemaining = settings.rejoinMinutes * 60
+
+	local function clock(seconds)
+		seconds = math.max(0, math.floor(seconds))
+		return string.format("%02d:%02d", seconds // 60, seconds % 60)
+	end
+
+	local function setStatus()
+		if settings.hopEnabled and settings.rejoinEnabled then
+			_G.atlasAutomationStatus = "Hop " .. clock(hopRemaining) .. "  Rejoin " .. clock(rejoinRemaining)
+		elseif settings.hopEnabled then
+			_G.atlasAutomationStatus = "Hop in " .. clock(hopRemaining)
+		elseif settings.rejoinEnabled then
+			_G.atlasAutomationStatus = "Rejoin in " .. clock(rejoinRemaining)
+		else
+			_G.atlasAutomationStatus = ""
+		end
+	end
+
+	local function startHop(minutes)
+		settings.hopMinutes = math.clamp(tonumber(minutes) or settings.hopMinutes or 10, 1, 60)
+		settings.hopEnabled = true
+		hopRemaining = settings.hopMinutes * 60
+		dirty = true
+		setStatus()
+		notify("auto server hop every " .. settings.hopMinutes .. " min")
+	end
+
+	local function stopHop()
+		settings.hopEnabled = false
+		dirty = true
+		setStatus()
+		notify("auto server hop off")
+	end
+
+	local function startRejoin(minutes)
+		settings.rejoinMinutes = math.clamp(tonumber(minutes) or settings.rejoinMinutes or 10, 1, 60)
+		settings.rejoinEnabled = true
+		rejoinRemaining = settings.rejoinMinutes * 60
+		dirty = true
+		setStatus()
+		notify("auto rejoin every " .. settings.rejoinMinutes .. " min")
+	end
+
+	local function stopRejoin()
+		settings.rejoinEnabled = false
+		dirty = true
+		setStatus()
+		notify("auto rejoin off")
+	end
+
+	_G.atlasAutomation = {
+		hop = startHop,
+		stopHop = stopHop,
+		rejoin = startRejoin,
+		stopRejoin = stopRejoin,
+		status = function()
+			return {
+				hopEnabled = settings.hopEnabled,
+				hopMinutes = settings.hopMinutes,
+				rejoinEnabled = settings.rejoinEnabled,
+				rejoinMinutes = settings.rejoinMinutes,
+			}
+		end,
+	}
 
 	task.spawn(function()
 		local last = os.clock()
@@ -632,20 +591,7 @@ do
 				rejoinRemaining = settings.rejoinMinutes * 60
 			end
 
-			local function clock(seconds)
-				seconds = math.max(0, math.floor(seconds))
-				return string.format("%02d:%02d", seconds // 60, seconds % 60)
-			end
-
-			if settings.hopEnabled and settings.rejoinEnabled then
-				status.Text = "Hop " .. clock(hopRemaining) .. "  |  Rejoin " .. clock(rejoinRemaining)
-			elseif settings.hopEnabled then
-				status.Text = "Hop in " .. clock(hopRemaining)
-			elseif settings.rejoinEnabled then
-				status.Text = "Rejoin in " .. clock(rejoinRemaining)
-			else
-				status.Text = "Idle"
-			end
+			setStatus()
 		end
 	end)
 
@@ -665,6 +611,8 @@ do
 		hop = hop,
 		rejoin = rejoin,
 	}
+
+	print("[Altas] debug: _G.atlasAutomation.hop(10) | .rejoin(10) | .stopHop() | .stopRejoin() | .status()")
 end
 
 local configShim = [==[
@@ -891,7 +839,7 @@ if type(hookfunction) == "function" and type(runService.Set3dRenderingEnabled) =
 	pcall(function()
 		local original
 		original = hookfunction(runService.Set3dRenderingEnabled, function(self, enabled, ...)
-			HUD.show(not enabled)
+			HUD.setHook(enabled)
 			return original(self, enabled, ...)
 		end)
 
@@ -928,6 +876,6 @@ if not chunk then
 	return notify("compile error: " .. tostring(compileError))
 end
 
-notify("walk=90 tween=100 hud=" .. (hudHooked and "hooked" or "manual") .. " hop/rejoin sliders ready")
+notify("walk=90 tween=100 hud=" .. (hudHooked and "hooked" or "auto-detect") .. " hop/rejoin in debug console")
 
 chunk()
