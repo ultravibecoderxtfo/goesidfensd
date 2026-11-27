@@ -2,9 +2,14 @@ local REPO = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/m
 local NONCE = tostring(os.time()) .. tostring(math.random(1000, 9999))
 local SOURCE_URL = REPO .. "main.lua?v=" .. NONCE
 
+_G.background = ""
+_G.unlocktween = true
+if getgenv then pcall(function() getgenv().unlocktween = true end) end
+if getrenv then pcall(function() getrenv().unlocktween = true end) end
+
 local function notify(text)
 	pcall(function()
-		game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Altas", Text = tostring(text), Duration = 8 })
+		game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Altas", Text = tostring(text), Duration = 10 })
 	end)
 end
 
@@ -25,6 +30,15 @@ local function replaceAll(source, needle, replacement)
 	end
 	return source, count
 end
+
+-- Load the hop/rejoin UI module here too, so altas.lua works on its own.
+pcall(function()
+	local ui = game:HttpGet(REPO .. "debugui.lua?v=" .. NONCE)
+	if type(ui) == "string" and #ui > 100 then
+		local uiChunk = loadstring(ui)
+		if uiChunk then pcall(uiChunk) end
+	end
+end)
 
 local HUD
 
@@ -392,5 +406,10 @@ source = configShim .. "\n" .. source
 local chunk, compileError = loadstring(source)
 if not chunk then return notify("compile error: " .. tostring(compileError)) end
 
-notify("Altas loaded without background")
-chunk()
+notify("Altas loaded " .. NONCE)
+
+local ok, runtimeError = pcall(chunk)
+if not ok then
+	notify("script error: " .. tostring(runtimeError))
+	print("[Altas] script error: " .. tostring(runtimeError))
+end
