@@ -4,7 +4,7 @@ local TeleportService = game:GetService("TeleportService")
 local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 
-local DOCK = "AltasHopDock"
+local SECTION = "AltasHopSection"
 local FILE = "atlas/accounts/" .. tostring(player.UserId) .. "/debug_automation.json"
 local settings = { hop = false, hopMin = 10, rejoin = false, rejoinMin = 10 }
 
@@ -122,38 +122,65 @@ local function roots()
 	return list
 end
 
-local function findWindow()
+local function findAntiLagHeader()
 	for _, root in ipairs(roots()) do
 		for _, object in ipairs(root:GetDescendants()) do
-			if object:IsA("TextLabel") and string.find(object.Text or "", "Altas 1.0 Modified", 1, true) then
-				local best, area = nil, 0
-				local ancestor, depth = object.Parent, 0
-				while ancestor and depth < 6 do
-					if ancestor:IsA("GuiObject") then
-						local size = ancestor.AbsoluteSize.X * ancestor.AbsoluteSize.Y
-						if ancestor.AbsoluteSize.X > 300 and size > area then best, area = ancestor, size end
-					end
-					ancestor = ancestor.Parent
-					depth += 1
+			if object:IsA("TextLabel") then
+				local text = string.lower((object.Text or ""):match("^%s*(.-)%s*$"))
+				if text == "anti lag" then
+					return object
 				end
-				if best then return best end
 			end
 		end
 	end
 	return nil
 end
 
-local function toggleButton(parent, position, labelText, state, onChange)
+local function containsText(root, target)
+	for _, object in ipairs(root:GetDescendants()) do
+		if object:IsA("TextLabel") then
+			local text = string.lower((object.Text or ""):match("^%s*(.-)%s*$"))
+			if text == target then return true end
+		end
+	end
+	return false
+end
+
+local function findColumns()
+	local header = findAntiLagHeader()
+	if not header then return nil, nil, nil end
+
+	local folder = header.Parent
+	local right = folder and folder.Parent
+	local page = right and right.Parent
+
+	if not page then return nil, nil, nil end
+
+	local left = nil
+	for _, sibling in ipairs(page:GetChildren()) do
+		if sibling ~= right and sibling:IsA("GuiObject") then
+			if containsText(sibling, "detected features") or containsText(sibling, "rares list") or containsText(sibling, "debug") then
+				left = sibling
+				break
+			end
+		end
+	end
+
+	return left or right, right, page
+end
+
+local function createToggle(parent, y, labelText, state, onChange)
 	local button = Instance.new("TextButton")
-	button.Position = position
-	button.Size = UDim2.new(0.5, -6, 0, 22)
-	button.BackgroundColor3 = state and Color3.fromRGB(46, 82, 58) or Color3.fromRGB(32, 32, 36)
+	button.Position = UDim2.new(0, 4, 0, y)
+	button.Size = UDim2.new(1, -8, 0, 22)
+	button.BackgroundColor3 = state and Color3.fromRGB(46, 82, 58) or Color3.fromRGB(34, 34, 40)
 	button.BorderSizePixel = 0
 	button.Font = Enum.Font.Code
 	button.TextSize = 12
 	button.TextColor3 = Color3.fromRGB(235, 235, 235)
-	button.Text = labelText .. ": " .. (state and "ON" or "OFF")
-	button.ZIndex = 31
+	button.TextXAlignment = Enum.TextXAlignment.Left
+	button.Text = "  " .. labelText .. ": " .. (state and "ON" or "OFF")
+	button.ZIndex = 41
 	button.Parent = parent
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 4)
@@ -161,31 +188,31 @@ local function toggleButton(parent, position, labelText, state, onChange)
 	local on = state
 	button.MouseButton1Click:Connect(function()
 		on = not on
-		button.Text = labelText .. ": " .. (on and "ON" or "OFF")
-		button.BackgroundColor3 = on and Color3.fromRGB(46, 82, 58) or Color3.fromRGB(32, 32, 36)
+		button.Text = "  " .. labelText .. ": " .. (on and "ON" or "OFF")
+		button.BackgroundColor3 = on and Color3.fromRGB(46, 82, 58) or Color3.fromRGB(34, 34, 40)
 		onChange(on)
 	end)
 end
 
-local function slider(parent, y, labelText, minValue, maxValue, initial, onChange)
+local function createSlider(parent, y, labelText, minValue, maxValue, initial, onChange)
 	local label = Instance.new("TextLabel")
-	label.Position = UDim2.new(0, 4, 0, y)
-	label.Size = UDim2.new(1, -8, 0, 12)
+	label.Position = UDim2.new(0, 6, 0, y)
+	label.Size = UDim2.new(1, -12, 0, 12)
 	label.BackgroundTransparency = 1
 	label.Font = Enum.Font.Code
 	label.TextSize = 10
 	label.TextColor3 = Color3.fromRGB(215, 215, 215)
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.Text = labelText .. ": " .. initial .. " min"
-	label.ZIndex = 31
+	label.ZIndex = 41
 	label.Parent = parent
 
 	local bar = Instance.new("Frame")
-	bar.Position = UDim2.new(0, 4, 0, y + 14)
-	bar.Size = UDim2.new(1, -8, 0, 5)
-	bar.BackgroundColor3 = Color3.fromRGB(52, 52, 58)
+	bar.Position = UDim2.new(0, 6, 0, y + 14)
+	bar.Size = UDim2.new(1, -12, 0, 6)
+	bar.BackgroundColor3 = Color3.fromRGB(52, 52, 60)
 	bar.BorderSizePixel = 0
-	bar.ZIndex = 31
+	bar.ZIndex = 41
 	bar.Parent = parent
 	local bc = Instance.new("UICorner")
 	bc.CornerRadius = UDim.new(1, 0)
@@ -193,9 +220,9 @@ local function slider(parent, y, labelText, minValue, maxValue, initial, onChang
 
 	local fill = Instance.new("Frame")
 	fill.Size = UDim2.fromScale((initial - minValue) / math.max(maxValue - minValue, 1), 1)
-	fill.BackgroundColor3 = Color3.fromRGB(120, 170, 255)
+	fill.BackgroundColor3 = Color3.fromRGB(110, 160, 240)
 	fill.BorderSizePixel = 0
-	fill.ZIndex = 31
+	fill.ZIndex = 41
 	fill.Parent = bar
 	local fc = Instance.new("UICorner")
 	fc.CornerRadius = UDim.new(1, 0)
@@ -232,67 +259,98 @@ local function slider(parent, y, labelText, minValue, maxValue, initial, onChang
 end
 
 task.spawn(function()
-	local docked = false
+	local placed = false
 
 	while true do
 		task.wait(1)
 
-		if docked then
-			continue
-		end
+		if placed then continue end
 
-		local window = findWindow()
+		local left, right = findColumns()
+		local host = left or right
 
-		if window and not window:FindFirstChild(DOCK) then
-			local dock = Instance.new("Frame")
-			dock.Name = DOCK
-			dock.Position = UDim2.new(0, 0, 1, -104)
-			dock.Size = UDim2.new(1, 0, 0, 100)
-			dock.BackgroundColor3 = Color3.fromRGB(16, 16, 18)
-			dock.BackgroundTransparency = 0.08
-			dock.BorderSizePixel = 0
-			dock.ZIndex = 30
-			dock.Parent = window
+		if host and not host:FindFirstChild(SECTION, true) then
+			local section = Instance.new("Frame")
+			section.Name = SECTION
+			section.BackgroundTransparency = 1
 
-			toggleButton(dock, UDim2.new(0, 4, 0, 2), "Auto Hop", settings.hop, function(state)
+			if host:FindFirstChildOfClass("UIListLayout") then
+				section.LayoutOrder = 10000
+				section.Size = UDim2.new(1, 0, 0, 140)
+			else
+				local bottom = 0
+				for _, child in ipairs(host:GetChildren()) do
+					if child:IsA("GuiObject") then
+						local childBottom = child.Position.Y.Offset + child.Size.Y.Offset
+						if childBottom > bottom then bottom = childBottom end
+					end
+				end
+				section.Position = UDim2.new(0, 0, 0, bottom + 10)
+				section.Size = UDim2.new(1, 0, 0, 140)
+			end
+
+			section.Parent = host
+
+			local header = Instance.new("TextLabel")
+			header.Position = UDim2.new(0, 6, 0, 0)
+			header.Size = UDim2.new(1, -12, 0, 16)
+			header.BackgroundTransparency = 1
+			header.Font = Enum.Font.Code
+			header.TextSize = 12
+			header.TextColor3 = Color3.fromRGB(255, 255, 255)
+			header.TextXAlignment = Enum.TextXAlignment.Left
+			header.Text = "Auto Server Hop / Rejoin"
+			header.ZIndex = 41
+			header.Parent = section
+
+			createToggle(section, 18, "Auto Server Hop", settings.hop, function(state)
 				settings.hop = state
 				hopLeft = settings.hopMin * 60
 				dirty = true
 				setStatus()
 			end)
 
-			toggleButton(dock, UDim2.new(0.5, 2, 0, 2), "Auto Rejoin", settings.rejoin, function(state)
+			createSlider(section, 44, "Hop every", 1, 60, settings.hopMin, function(value)
+				settings.hopMin = value
+				hopLeft = value * 60
+				dirty = true
+			end)
+
+			createToggle(section, 70, "Auto Rejoin", settings.rejoin, function(state)
 				settings.rejoin = state
 				rejoinLeft = settings.rejoinMin * 60
 				dirty = true
 				setStatus()
 			end)
 
-			slider(dock, 28, "Hop every", 1, 60, settings.hopMin, function(value)
-				settings.hopMin = value
-				hopLeft = value * 60
-				dirty = true
-			end)
-
-			slider(dock, 52, "Rejoin every", 1, 60, settings.rejoinMin, function(value)
+			createSlider(section, 96, "Rejoin every", 1, 60, settings.rejoinMin, function(value)
 				settings.rejoinMin = value
 				rejoinLeft = value * 60
 				dirty = true
 			end)
 
 			local status = Instance.new("TextLabel")
-			status.Position = UDim2.new(0, 4, 0, 78)
-			status.Size = UDim2.new(1, -8, 0, 12)
+			status.Position = UDim2.new(0, 6, 0, 122)
+			status.Size = UDim2.new(1, -12, 0, 12)
 			status.BackgroundTransparency = 1
 			status.Font = Enum.Font.Code
 			status.TextSize = 10
 			status.TextColor3 = Color3.fromRGB(160, 200, 160)
 			status.TextXAlignment = Enum.TextXAlignment.Left
 			status.Text = ""
-			status.ZIndex = 31
-			status.Parent = dock
+			status.ZIndex = 41
+			status.Parent = section
 
-			docked = true
+			if host:IsA("ScrollingFrame") then
+				pcall(function()
+					local needed = section.Position.Y.Offset + 150
+					if host.CanvasSize.Y.Offset < needed then
+						host.CanvasSize = UDim2.new(host.CanvasSize.X.Scale, host.CanvasSize.X.Offset, 0, needed)
+					end
+				end)
+			end
+
+			placed = true
 
 			task.spawn(function()
 				while true do
