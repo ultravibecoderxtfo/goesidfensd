@@ -5,12 +5,12 @@
 --   * per-account config storage: atlas/accounts/<UserId>/
 --   * window title: Altas 1.0 Modified by rust96
 --   * background image, resolved before the UI is built
---   * walkspeed slider max 180, tween slider max 100
+--   * walkspeed slider max 90, tween slider max 100
 --   * tween speed clamp removed (not just unlocked)
 --   * walk slider applies WalkSpeed on every change, up and down
 --
 -- Run (add ?v= to skip any cached copy):
---   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=6"))()
+--   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=7"))()
 
 local REPO = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/"
 local NONCE = tostring(os.time()) .. tostring(math.random(1000, 9999))
@@ -144,8 +144,8 @@ local sliderGuard = [==[
 	local isWalkSpeed = sliderKey == "walkspeed" or sliderName == "walkspeed" or (string.find(sliderName, "walk", 1, true) and string.find(sliderName, "speed", 1, true))
 	local isTweenSpeed = sliderKey == "tweenspeed" or sliderName == "tweenspeed" or (string.find(sliderName, "tween", 1, true) and string.find(sliderName, "speed", 1, true))
 
-	if isWalkSpeed and maxNumber < 180 then
-		maxValue = 180
+	if isWalkSpeed and maxNumber ~= 90 then
+		maxValue = 90
 	end
 
 	if isTweenSpeed and maxNumber < 100 then
@@ -328,6 +328,6 @@ task.delay(8, function()
 	end
 end)
 
-notify("sliders=" .. (sliderPatched and ("x" .. sliderCount) or "NOT patched") .. " clamp=" .. (tweenClampPatched and "off" or "still on") .. " bg=" .. (background and "ok" or "fail"))
+notify("walk=90 tween=100 clamp=" .. (tweenClampPatched and "off" or "still on") .. " bg=" .. (background and "ok" or "fail"))
 
 chunk()
