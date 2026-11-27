@@ -4,11 +4,11 @@
 -- Applies:
 --   * per-account config storage: atlas/accounts/<UserId>/
 --   * window title: Altas 1.0 Modified by rust96
---   * background image, resolved before the UI is built:
---     workspace cache -> repo PNG -> local PNG
+--   * background image, resolved before the UI is built
+--   * walkspeed slider max 180, tween slider max 100, tween clamp unlocked
 --
 -- Run (add ?v= to skip any cached copy):
---   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=2"))()
+--   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=3"))()
 
 local REPO = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/"
 local NONCE = tostring(os.time()) .. tostring(math.random(1000, 9999))
@@ -32,6 +32,29 @@ local function replaceOnce(source, needle, replacement)
 	end
 
 	return string.sub(source, 1, index - 1) .. replacement .. string.sub(source, index + #needle), true
+end
+
+-- Sliders are created as AddSlider(title, callback, min, max, configSource, configKey, options).
+-- This raises the max that sits directly before the config source and key.
+local function raiseSliderMax(source, key, newMax)
+	local patterns = {
+		"(%d+)(%s*,%s*\"vars\"%s*,%s*\"" .. key .. "\")",
+		"(%d+)(%s*,%s*cfg%.vars%s*,%s*\"" .. key .. "\")",
+	}
+	local changed = false
+
+	for _, pattern in ipairs(patterns) do
+		source = string.gsub(source, pattern, function(maxValue, suffix)
+			if (tonumber(maxValue) or 0) < newMax then
+				changed = true
+				return tostring(newMax) .. suffix
+			end
+
+			return maxValue .. suffix
+		end, 1)
+	end
+
+	return source, changed
 end
 
 local configShim = [==[
@@ -212,6 +235,9 @@ if background then
 	_G.background = background
 end
 
+-- lifte the script's own tween speed clamp (12 by default)
+_G.unlocktween = true
+
 local source = game:HttpGet(SOURCE_URL)
 
 if type(source) ~= "string" or #source < 1000 then
@@ -225,6 +251,11 @@ if not titlePatched then
 	source, titlePatched = replaceOnce(source, "\"deobfuscated by skynex - .gg/syncrypt\"", "\"Altas 1.0 Modified by rust96\"")
 end
 
+local walkPatched = false
+local tweenPatched = false
+source, walkPatched = raiseSliderMax(source, "walkspeed", 180)
+source, tweenPatched = raiseSliderMax(source, "tweenspeed", 100)
+
 source = configShim .. "\n" .. source
 
 local chunk, compileError = loadstring(source)
@@ -233,6 +264,6 @@ if not chunk then
 	return notify("compile error: " .. tostring(compileError))
 end
 
-notify("bg=" .. (background and "ok" or "fail") .. " (" .. string.sub(reason, 1, 80) .. ") title=" .. (titlePatched and "ok" or "fail"))
+notify("ws=" .. (walkPatched and "180" or "no match") .. " ts=" .. (tweenPatched and "100" or "no match") .. " bg=" .. (background and "ok" or "fail"))
 
 chunk()
