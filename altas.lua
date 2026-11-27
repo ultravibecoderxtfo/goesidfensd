@@ -3,7 +3,7 @@
 --
 -- Applies:
 --   * per-account config storage: atlas/accounts/<UserId>/
---   * window title: Altas 1.0 Modified by rust96
+--   * window title: Altas 1.0 Modified by rust96 v13
 --   * background image, resolved before the UI is built
 --   * walkspeed slider max 90, tween slider max 100
 --   * tween speed clamp removed (not just unlocked)
@@ -12,9 +12,9 @@
 --   * auto server hop / rejoin, driven from the debug console (no extra UI)
 --
 -- Run (add ?v= to skip any cached copy):
---   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=12"))()
+--   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=13"))()
 --
--- HUD: shows over the antilag black screen, or press RightShift to open it any time.
+-- HUD: opens when you click "Disable 3rd Rendering", or press RightShift.
 --
 -- Debug console:
 --   _G.atlasAutomation.hop(10)      auto server hop every 10 min
@@ -78,9 +78,18 @@ do
 	gui.Name = "AltasAntiLagHud"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 100
+	gui.DisplayOrder = 1000
 	gui.Enabled = false
-	gui.Parent = gethui and gethui() or game:GetService("CoreGui")
+
+	pcall(function()
+		gui.Parent = gethui and gethui() or game:GetService("CoreGui")
+	end)
+
+	if not gui.Parent then
+		pcall(function()
+			gui.Parent = game:GetService("CoreGui")
+		end)
+	end
 
 	local black = Instance.new("Frame")
 	black.Name = "Black"
@@ -136,7 +145,7 @@ do
 
 	local rows = {}
 
-	addLabel("Altas 1.0 - Anti-Lag (RightShift)", 14, Color3.fromRGB(255, 255, 255))
+	addLabel("Altas 1.0 - Anti-Lag v13 (RightShift)", 14, Color3.fromRGB(255, 255, 255))
 	rows.uptime = addLabel("Uptime: 00:00:00")
 	rows.server = addLabel("Server Uptime: 00:00:00")
 	rows.honey = addLabel("Session Honey: 0")
@@ -368,6 +377,47 @@ do
 		if input.KeyCode == Enum.KeyCode.RightShift then
 			manual = not gui.Enabled
 			apply()
+		end
+	end)
+
+	-- Attach to the real "Disable 3rd Rendering" control: clicking it toggles this HUD.
+	local watched = {}
+
+	local function connectRenderingToggle()
+		for _, root in ipairs(candidateRoots()) do
+			for _, object in ipairs(root:GetDescendants()) do
+				local text = nil
+
+				if object:IsA("TextLabel") or object:IsA("TextButton") then
+					text = string.lower(object.Text or "")
+				end
+
+				if text and (string.find(text, "3rd rendering", 1, true) or string.find(text, "3d rendering", 1, true)) then
+					local clickable = object
+					local depth = 0
+
+					while clickable and not clickable:IsA("GuiButton") and depth < 6 do
+						clickable = clickable.Parent
+						depth += 1
+					end
+
+					if clickable and clickable:IsA("GuiButton") and not watched[clickable] then
+						watched[clickable] = true
+
+						clickable.MouseButton1Click:Connect(function()
+							manual = not gui.Enabled
+							apply()
+						end)
+					end
+				end
+			end
+		end
+	end
+
+	task.spawn(function()
+		while true do
+			task.wait(2)
+			pcall(connectRenderingToggle)
 		end
 	end)
 
@@ -874,7 +924,6 @@ if type(source) ~= "string" or #source < 1000 then
 	return notify("main.lua download failed")
 end
 
--- Dump the antilag and debug sections so they can be uploaded for exact wiring.
 local dumpNotes = {}
 
 local function dumpAround(marker, path, before, after)
@@ -906,10 +955,10 @@ if type(writefile) == "function" then
 end
 
 local titlePatched = false
-source, titlePatched = replaceOnce(source, "local title = _G.title and", "local title = \"Altas 1.0 Modified by rust96\" or _G.title and")
+source, titlePatched = replaceOnce(source, "local title = _G.title and", "local title = \"Altas 1.0 Modified by rust96 v13\" or _G.title and")
 
 if not titlePatched then
-	source, titlePatched = replaceOnce(source, "\"deobfuscated by skynex - .gg/syncrypt\"", "\"Altas 1.0 Modified by rust96\"")
+	source, titlePatched = replaceOnce(source, "\"deobfuscated by skynex - .gg/syncrypt\"", "\"Altas 1.0 Modified by rust96 v13\"")
 end
 
 local tweenClampPatched = false
@@ -928,6 +977,6 @@ if not chunk then
 	return notify("compile error: " .. tostring(compileError))
 end
 
-notify("RightShift = HUD | dumps: " .. (#dumpNotes > 0 and table.concat(dumpNotes, " ") or "none"))
+notify("Altas v13 loaded | RightShift = HUD | dumps: " .. (#dumpNotes > 0 and table.concat(dumpNotes, " ") or "none"))
 
 chunk()
