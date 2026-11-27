@@ -5,10 +5,12 @@
 --   * per-account config storage: atlas/accounts/<UserId>/
 --   * window title: Altas 1.0 Modified by rust96
 --   * background image, resolved before the UI is built
---   * walkspeed slider max 180, tween slider max 100, tween clamp unlocked
+--   * walkspeed slider max 180, tween slider max 100
+--   * tween speed clamp removed (not just unlocked)
+--   * walk slider applies WalkSpeed on every change, up and down
 --
 -- Run (add ?v= to skip any cached copy):
---   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=5"))()
+--   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=6"))()
 
 local REPO = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/"
 local NONCE = tostring(os.time()) .. tostring(math.random(1000, 9999))
@@ -150,6 +152,25 @@ local sliderGuard = [==[
 		maxValue = 100
 	end
 
+	if isWalkSpeed and callback then
+		local userCallback = callback
+
+		callback = function(newValue)
+			userCallback(newValue)
+
+			if cfg and cfg.vars and cfg.vars.walkspeedenabled then
+				pcall(function()
+					local character = game:GetService("Players").LocalPlayer.Character
+					local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+					if humanoid then
+						humanoid.WalkSpeed = tonumber(newValue) or humanoid.WalkSpeed
+					end
+				end)
+			end
+		end
+	end
+
 	if _G.atlasSliderLog and (isWalkSpeed or isTweenSpeed) then
 		table.insert(_G.atlasSliderLog, tostring(sliderTitle) .. " " .. tostring(minValue) .. "-" .. tostring(maxValue) .. " key=" .. tostring(configKey))
 	end
@@ -253,6 +274,19 @@ if background then
 end
 
 _G.unlocktween = true
+
+if getgenv then
+	pcall(function()
+		getgenv().unlocktween = true
+	end)
+end
+
+if getrenv then
+	pcall(function()
+		getrenv().unlocktween = true
+	end)
+end
+
 _G.atlasSliderLog = {}
 
 local source = game:HttpGet(SOURCE_URL)
@@ -267,6 +301,9 @@ source, titlePatched = replaceOnce(source, "local title = _G.title and", "local 
 if not titlePatched then
 	source, titlePatched = replaceOnce(source, "\"deobfuscated by skynex - .gg/syncrypt\"", "\"Altas 1.0 Modified by rust96\"")
 end
+
+local tweenClampPatched = false
+source, tweenClampPatched = replaceOnce(source, "if cfg.vars.tweenspeed > 12 and _G.unlocktween ~= true then", "if false then")
 
 local addSliderNeedle = "folderApi.AddSlider = function(sliderTitle, callback, minValue, maxValue, configSource, configKey, options)"
 local sliderCount = 0
@@ -291,6 +328,6 @@ task.delay(8, function()
 	end
 end)
 
-notify("sliders=" .. (sliderPatched and ("patched x" .. sliderCount) or "NOT patched") .. " bg=" .. (background and "ok" or "fail") .. " title=" .. (titlePatched and "ok" or "fail"))
+notify("sliders=" .. (sliderPatched and ("x" .. sliderCount) or "NOT patched") .. " clamp=" .. (tweenClampPatched and "off" or "still on") .. " bg=" .. (background and "ok" or "fail"))
 
 chunk()
