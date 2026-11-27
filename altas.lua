@@ -11,7 +11,7 @@
 --   * black-screen anti-lag HUD with uptime, server uptime, honey, rate, heading
 --
 -- Run (add ?v= to skip any cached copy):
---   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=8"))()
+--   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=9"))()
 
 local REPO = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/"
 local NONCE = tostring(os.time()) .. tostring(math.random(1000, 9999))
@@ -481,14 +481,15 @@ _G.atlasSliderLog = {}
 local runService = game:GetService("RunService")
 local hudHooked = false
 
-if hookfunction and runService.Set3dRenderingEnabled then
-	hudHooked = pcall(function()
-		local original = hookfunction(runService.Set3dRenderingEnabled, function(self, enabled, ...)
+if type(hookfunction) == "function" and type(runService.Set3dRenderingEnabled) == "function" then
+	pcall(function()
+		local original
+		original = hookfunction(runService.Set3dRenderingEnabled, function(self, enabled, ...)
 			HUD.show(not enabled)
 			return original(self, enabled, ...)
 		end)
 
-		_G.atlasHudOriginalSet3d = original
+		hudHooked = true
 	end)
 end
 
