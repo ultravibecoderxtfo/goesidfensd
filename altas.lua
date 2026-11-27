@@ -5,7 +5,9 @@
 --   * per-account config storage: atlas/accounts/<UserId>/
 --   * one-time copy of existing global configs into that account folder
 --   * window title: Altas 1.0 Modified by rust96
---   * background image: workspace cache -> repo background.png -> local PNG
+--   * background image: workspace cache -> repo PNG -> local PNG
+--
+-- The repo PNG may be named background.png or 92132-972537-sweetie-fox-gamer.png.
 --
 -- Run:
 --   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua"))()
@@ -106,64 +108,66 @@ end
 local backgroundPatch = [==[
 do
 	local bgFile = "altas_bg.png"
-	local bgRemote = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/background.png"
+	local repoBase = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/"
+	local repoFiles = { "background.png", "92132-972537-sweetie-fox-gamer.png" }
 	local bgLocal = "/home/alex/Downloads/92132-972537-sweetie-fox-gamer.png"
 	local asset = nil
 
-	local function fileSize(path)
-		local ok, data = pcall(readfile, path)
-
-		if ok and type(data) == "string" then
-			return #data
-		end
-
-		return 0
+	local function isPng(data)
+		return type(data) == "string" and #data > 100 and string.sub(data, 1, 4) == "\137PNG"
 	end
 
-	local cached = 0
+	local cached = nil
 
 	if isfile then
 		pcall(function()
 			if isfile(bgFile) then
-				cached = fileSize(bgFile)
+				cached = readfile(bgFile)
 			end
 		end)
 	end
 
-	if cached > 100 then
+	if isPng(cached) then
 		local ok, result = pcall(getcustomasset, bgFile)
 
 		if ok then
 			asset = result
 		end
 
-		warn("[Altas] background: cached file, " .. cached .. " bytes")
+		warn("[Altas] background: cached altas_bg.png, " .. #cached .. " bytes")
 	else
-		local fetchOk, data = pcall(function()
-			return game:HttpGet(bgRemote)
-		end)
+		for _, name in ipairs(repoFiles) do
+			local fetchOk, data = pcall(function()
+				return game:HttpGet(repoBase .. name)
+			end)
 
-		if fetchOk and type(data) == "string" and #data > 100 then
-			local writeOk = pcall(writefile, bgFile, data)
+			if fetchOk and isPng(data) then
+				local writeOk = pcall(writefile, bgFile, data)
 
-			warn("[Altas] background: downloaded " .. #data .. " bytes, write=" .. tostring(writeOk))
+				warn("[Altas] background: downloaded " .. name .. ", " .. #data .. " bytes, write=" .. tostring(writeOk))
 
-			if writeOk then
-				local ok, result = pcall(getcustomasset, bgFile)
+				if writeOk then
+					local ok, result = pcall(getcustomasset, bgFile)
 
-				if ok then
-					asset = result
+					if ok then
+						asset = result
+					end
 				end
-			end
-		else
-			warn("[Altas] background: repo download failed (" .. tostring(data) .. ")")
 
+				break
+			else
+				warn("[Altas] background: " .. name .. " is missing or not a PNG")
+			end
+		end
+
+		if type(asset) ~= "string" then
 			local localData = nil
+
 			pcall(function()
 				localData = readfile(bgLocal)
 			end)
 
-			if type(localData) == "string" and #localData > 100 then
+			if isPng(localData) then
 				writefile(bgFile, localData)
 
 				local ok, result = pcall(getcustomasset, bgFile)
@@ -172,7 +176,7 @@ do
 					asset = result
 				end
 
-				warn("[Altas] background: copied local PNG, " .. #localData .. " bytes")
+				warn("[Altas] background: copied the local PNG, " .. #localData .. " bytes")
 			else
 				warn("[Altas] background: local PNG not readable")
 			end
@@ -191,7 +195,7 @@ do
 	if type(asset) == "string" and #asset > 0 then
 		_G.background = asset
 	else
-		warn("[Altas] background: unavailable, keeping the default window")
+		warn("[Altas] background: unavailable - upload the PNG to the repo")
 	end
 end
 ]==]
