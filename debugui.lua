@@ -122,51 +122,40 @@ local function roots()
 	return list
 end
 
-local function findAntiLagHeader()
+local function normalized(object)
+	if not object:IsA("TextLabel") and not object:IsA("TextButton") then return "" end
+	return string.lower((object.Text or ""):match("^%s*(.-)%s*$")) or ""
+end
+
+local function containsText(root, target)
+	for _, object in ipairs(root:GetDescendants()) do
+		local text = normalized(object)
+		if text == target then return true end
+	end
+	return false
+end
+
+-- The left column of the Debug page: contains Debug, Detected Features and Rares List,
+-- but none of the Anti Lag toggles.
+local function findLeftColumn()
 	for _, root in ipairs(roots()) do
 		for _, object in ipairs(root:GetDescendants()) do
-			if object:IsA("TextLabel") then
-				local text = string.lower((object.Text or ""):match("^%s*(.-)%s*$"))
-				if text == "anti lag" then
-					return object
+			if normalized(object) == "rares list" then
+				local ancestor, depth = object, 0
+				while ancestor and depth < 8 do
+					if ancestor:IsA("GuiObject")
+						and containsText(ancestor, "detected features")
+						and containsText(ancestor, "debug")
+						and not containsText(ancestor, "hide tokens") then
+						return ancestor
+					end
+					ancestor = ancestor.Parent
+					depth += 1
 				end
 			end
 		end
 	end
 	return nil
-end
-
-local function containsText(root, target)
-	for _, object in ipairs(root:GetDescendants()) do
-		if object:IsA("TextLabel") then
-			local text = string.lower((object.Text or ""):match("^%s*(.-)%s*$"))
-			if text == target then return true end
-		end
-	end
-	return false
-end
-
-local function findColumns()
-	local header = findAntiLagHeader()
-	if not header then return nil, nil, nil end
-
-	local folder = header.Parent
-	local right = folder and folder.Parent
-	local page = right and right.Parent
-
-	if not page then return nil, nil, nil end
-
-	local left = nil
-	for _, sibling in ipairs(page:GetChildren()) do
-		if sibling ~= right and sibling:IsA("GuiObject") then
-			if containsText(sibling, "detected features") or containsText(sibling, "rares list") or containsText(sibling, "debug") then
-				left = sibling
-				break
-			end
-		end
-	end
-
-	return left or right, right, page
 end
 
 local function createToggle(parent, y, labelText, state, onChange)
@@ -266,8 +255,7 @@ task.spawn(function()
 
 		if placed then continue end
 
-		local left, right = findColumns()
-		local host = left or right
+		local host = findLeftColumn()
 
 		if host and not host:FindFirstChild(SECTION, true) then
 			local section = Instance.new("Frame")
