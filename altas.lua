@@ -1,18 +1,28 @@
 -- Altas 1.0 Modified by rust96
 -- Entry point for the Altas source (main.lua) in this repository.
 --
--- Applied at load time:
+-- Applies:
 --   * per-account config storage: atlas/accounts/<UserId>/
---   * one-time copy of existing global configs into that account folder
 --   * window title: Altas 1.0 Modified by rust96
---   * background image: workspace cache -> repo PNG -> local PNG
+--   * background image, resolved before the UI is built:
+--     workspace cache -> repo PNG -> local PNG
 --
--- The repo PNG may be named background.png or 92132-972537-sweetie-fox-gamer.png.
---
--- Run:
---   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua"))()
+-- Run (add ?v= to skip any cached copy):
+--   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=2"))()
 
-local SOURCE_URL = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/main.lua"
+local REPO = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/"
+local NONCE = tostring(os.time()) .. tostring(math.random(1000, 9999))
+local SOURCE_URL = REPO .. "main.lua?v=" .. NONCE
+
+local function notify(text)
+	pcall(function()
+		game:GetService("StarterGui"):SetCore("SendNotification", {
+			Title = "Altas",
+			Text = tostring(text),
+			Duration = 8,
+		})
+	end)
+end
 
 local function replaceOnce(source, needle, replacement)
 	local index = string.find(source, needle, 1, true)
@@ -105,131 +115,124 @@ do
 end
 ]==]
 
-local backgroundPatch = [==[
-do
-	local bgFile = "altas_bg.png"
-	local repoBase = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/"
-	local repoFiles = { "background.png", "92132-972537-sweetie-fox-gamer.png" }
-	local bgLocal = "/home/alex/Downloads/92132-972537-sweetie-fox-gamer.png"
-	local asset = nil
+local BG_FILE = "altas_bg.png"
+local BG_LOCAL = "/home/alex/Downloads/92132-972537-sweetie-fox-gamer.png"
+local BG_NAMES = { "background.png", "92132-972537-sweetie-fox-gamer.png" }
 
-	local function isPng(data)
-		return type(data) == "string" and #data > 100 and string.sub(data, 1, 4) == "\137PNG"
+local function isPng(data)
+	return type(data) == "string" and #data > 100 and string.sub(data, 1, 4) == "\137PNG"
+end
+
+local function assetFromWorkspace()
+	local ok, result = pcall(getcustomasset, BG_FILE)
+
+	if ok and type(result) == "string" and #result > 0 then
+		return result
 	end
 
-	local cached = nil
+	if getsynasset then
+		local ok2, result2 = pcall(getsynasset, BG_FILE)
 
-	if isfile then
-		pcall(function()
-			if isfile(bgFile) then
-				cached = readfile(bgFile)
-			end
-		end)
-	end
-
-	if isPng(cached) then
-		local ok, result = pcall(getcustomasset, bgFile)
-
-		if ok then
-			asset = result
+		if ok2 and type(result2) == "string" and #result2 > 0 then
+			return result2
 		end
+	end
 
-		warn("[Altas] background: cached altas_bg.png, " .. #cached .. " bytes")
+	return nil
+end
+
+local background = nil
+local reason = "no source"
+
+local cached = nil
+
+pcall(function()
+	if isfile and isfile(BG_FILE) then
+		cached = readfile(BG_FILE)
+	end
+end)
+
+if isPng(cached) then
+	background = assetFromWorkspace()
+
+	if background then
+		reason = "cache, " .. #cached .. " bytes"
 	else
-		for _, name in ipairs(repoFiles) do
-			local fetchOk, data = pcall(function()
-				return game:HttpGet(repoBase .. name)
-			end)
-
-			if fetchOk and isPng(data) then
-				local writeOk = pcall(writefile, bgFile, data)
-
-				warn("[Altas] background: downloaded " .. name .. ", " .. #data .. " bytes, write=" .. tostring(writeOk))
-
-				if writeOk then
-					local ok, result = pcall(getcustomasset, bgFile)
-
-					if ok then
-						asset = result
-					end
-				end
-
-				break
-			else
-				warn("[Altas] background: " .. name .. " is missing or not a PNG")
-			end
-		end
-
-		if type(asset) ~= "string" then
-			local localData = nil
-
-			pcall(function()
-				localData = readfile(bgLocal)
-			end)
-
-			if isPng(localData) then
-				writefile(bgFile, localData)
-
-				local ok, result = pcall(getcustomasset, bgFile)
-
-				if ok then
-					asset = result
-				end
-
-				warn("[Altas] background: copied the local PNG, " .. #localData .. " bytes")
-			else
-				warn("[Altas] background: local PNG not readable")
-			end
-		end
-	end
-
-	if type(asset) ~= "string" or #asset == 0 then
-		local ok, result = pcall(getcustomasset, bgLocal)
-
-		if ok and type(result) == "string" and #result > 0 then
-			asset = result
-			warn("[Altas] background: getcustomasset accepted the absolute path")
-		end
-	end
-
-	if type(asset) == "string" and #asset > 0 then
-		_G.background = asset
-	else
-		warn("[Altas] background: unavailable - upload the PNG to the repo")
+		reason = "cache present, getcustomasset failed"
 	end
 end
-]==]
+
+if not background then
+	for _, name in ipairs(BG_NAMES) do
+		local ok, data = pcall(function()
+			return game:HttpGet(REPO .. name .. "?v=" .. NONCE)
+		end)
+
+		if ok and isPng(data) then
+			local wrote = pcall(writefile, BG_FILE, data)
+
+			if wrote then
+				background = assetFromWorkspace()
+
+				if background then
+					reason = name .. ", " .. #data .. " bytes"
+					break
+				end
+
+				reason = name .. ": getcustomasset failed"
+			else
+				reason = name .. ": writefile failed"
+			end
+		else
+			reason = name .. ": " .. tostring(ok and "not a PNG" or data)
+		end
+	end
+end
+
+if not background then
+	local data = nil
+
+	pcall(function()
+		data = readfile(BG_LOCAL)
+	end)
+
+	if isPng(data) then
+		local wrote = pcall(writefile, BG_FILE, data)
+
+		if wrote then
+			background = assetFromWorkspace()
+			reason = background and ("local file, " .. #data .. " bytes") or "local file: getcustomasset failed"
+		else
+			reason = "local file: writefile failed"
+		end
+	end
+end
+
+if background then
+	_G.background = background
+end
 
 local source = game:HttpGet(SOURCE_URL)
 
 if type(source) ~= "string" or #source < 1000 then
-	return warn("[Altas] failed to download main.lua")
+	return notify("main.lua download failed")
 end
 
-local report = {}
-local ok
+local titlePatched = false
+source, titlePatched = replaceOnce(source, "local title = _G.title and", "local title = \"Altas 1.0 Modified by rust96\" or _G.title and")
+
+if not titlePatched then
+	source, titlePatched = replaceOnce(source, "\"deobfuscated by skynex - .gg/syncrypt\"", "\"Altas 1.0 Modified by rust96\"")
+end
 
 source = configShim .. "\n" .. source
-table.insert(report, "configs=per-account")
-
-source, ok = replaceOnce(source, "local title = _G.title and", "local title = \"Altas 1.0 Modified by rust96\" or _G.title and")
-
-if not ok then
-	source, ok = replaceOnce(source, "\"deobfuscated by skynex - .gg/syncrypt\"", "\"Altas 1.0 Modified by rust96\"")
-end
-
-table.insert(report, ok and "title=patched" or "title=NOT patched")
-
-local screenNeedle = "local ScreenGui = Instance.new(\"ScreenGui\")"
-source, ok = replaceOnce(source, screenNeedle, backgroundPatch .. "\n" .. screenNeedle)
-table.insert(report, ok and "background=patched" or "background=NOT patched")
 
 local chunk, compileError = loadstring(source)
 
 if not chunk then
-	return warn("[Altas] compile error: " .. tostring(compileError))
+	return notify("compile error: " .. tostring(compileError))
 end
 
-warn("[Altas] " .. table.concat(report, " "))
+notify("bg=" .. (background and "ok" or "fail") .. " (" .. string.sub(reason, 1, 80) .. ") title=" .. (titlePatched and "ok" or "fail"))
 
 chunk()
