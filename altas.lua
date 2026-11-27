@@ -162,18 +162,21 @@ do
 		return nil, nil
 	end
 
-	local function ensureAtlasShown()
-		local screen, title = atlasScreen()
+	local function ensureAtlasScreen()
+		local screen = atlasScreen()
 		if screen and not screen.Enabled then screen.Enabled = true end
-		if title then
-			local ancestor, depth = title.Parent, 0
-			while ancestor and depth < 5 do
-				if ancestor:IsA("GuiObject") and ancestor.AbsoluteSize.X > 280 and ancestor.AbsoluteSize.Y > 140 and not ancestor.Visible then
-					ancestor.Visible = true
-				end
-				ancestor = ancestor.Parent
-				depth += 1
+	end
+
+	local function ensureAtlasWindow()
+		local _, title = atlasScreen()
+		if not title then return end
+		local ancestor, depth = title.Parent, 0
+		while ancestor and depth < 5 do
+			if ancestor:IsA("GuiObject") and ancestor.AbsoluteSize.X > 280 and ancestor.AbsoluteSize.Y > 140 and not ancestor.Visible then
+				ancestor.Visible = true
 			end
+			ancestor = ancestor.Parent
+			depth += 1
 		end
 	end
 
@@ -221,13 +224,14 @@ do
 		gui.Enabled = visible and true or false
 		if gui.Enabled then
 			pcall(refresh)
-			pcall(ensureAtlasShown)
+			pcall(ensureAtlasWindow)
 		end
 	end
 
 	HUD = { gui = gui }
 	HUD.setHook = function(enabled)
 		hookVisible = not enabled
+		if enabled then manual = nil end
 		apply()
 	end
 
@@ -281,7 +285,7 @@ do
 
 	task.spawn(function()
 		while true do
-			task.wait(2)
+			task.wait(1)
 			pcall(connectRenderingToggle)
 		end
 	end)
@@ -289,7 +293,8 @@ do
 	task.spawn(function()
 		while true do
 			task.wait(1)
-			if gui.Enabled then pcall(refresh); pcall(ensureAtlasShown) end
+			pcall(ensureAtlasScreen)
+			if gui.Enabled then pcall(refresh); pcall(ensureAtlasWindow) end
 		end
 	end)
 end
@@ -583,6 +588,7 @@ do
 		end
 
 		injected = true
+		notify("hop/rejoin added to Debug")
 
 		task.spawn(function()
 			while true do
@@ -592,34 +598,116 @@ do
 		end)
 	end
 
-	local function findRenderingPage()
+	local function pageForTab(button)
+		local bar = button.Parent
+		if not bar or not bar.Parent then return nil end
+
+		local index, i = nil, 0
+		for _, child in ipairs(bar:GetChildren()) do
+			if child:IsA("GuiObject") then
+				i += 1
+				if child == button then index = i end
+			end
+		end
+
+		if not index then return nil end
+
+		for _, sibling in ipairs(bar.Parent:GetChildren()) do
+			if sibling ~= bar and sibling:IsA("GuiObject") then
+				local j, page = 0, nil
+				for _, child in ipairs(sibling:GetChildren()) do
+					if child:IsA("GuiObject") then
+						j += 1
+						if j == index then page = child end
+					end
+				end
+				if page and (page:IsA("ScrollingFrame") or page:FindFirstChildOfClass("UIListLayout")) then
+					return page
+				end
+			end
+		end
+
+		return nil
+	end
+
+	local pageVisible = {}
+
+	local function snapshotPages()
 		for _, root in ipairs(findUiRoots()) do
 			for _, object in ipairs(root:GetDescendants()) do
-				local text = nil
-				if object:IsA("TextLabel") or object:IsA("TextButton") then text = string.lower(object.Text or "") end
-				if text and string.find(text, "render", 1, true)
-					and (string.find(text, "3rd", 1, true) or string.find(text, "3d", 1, true) or string.find(text, "disab", 1, true)) then
-					local ancestor, depth = object.Parent, 0
-					while ancestor and depth < 8 do
-						if ancestor:IsA("ScrollingFrame") then return ancestor end
-						if ancestor:IsA("Frame") and #ancestor:GetChildren() > 6 then return ancestor end
-						ancestor = ancestor.Parent
-						depth += 1
+				if object:IsA("ScrollingFrame") or (object:IsA("Frame") and object:FindFirstChildOfClass("UIListLayout")) then
+					pageVisible[object] = object.Visible
+				end
+			end
+		end
+	end
+
+	local debugWatched = {}
+
+	local function watchTab(button)
+		if debugWatched[button] then return end
+		debugWatched[button] = true
+
+		button.MouseButton1Click:Connect(function()
+			task.delay(0.4, function()
+				if injected then return end
+
+				for _, root in ipairs(findUiRoots()) do
+					for _, object in ipairs(root:GetDescendants()) do
+						if (object:IsA("ScrollingFrame") or object:IsA("Frame"))
+							and object.Visible
+							and pageVisible[object] == false then
+							injectInto(object)
+							if injected then return end
+						end
+					end
+				end
+
+				pcall(function() injectInto(pageForTab(button)) end)
+			end)
+		end)
+	end
+
+	local function scanForDebug()
+		if injected then return end
+
+		for _, root in ipairs(findUiRoots()) do
+			for _, object in ipairs(root:GetDescendants()) do
+				if object:IsA("GuiButton") then
+					local text = string.lower(object.Text or "")
+					local isDebug = string.find(text, "debug", 1, true) ~= nil
+
+					if not isDebug then
+						for _, child in ipairs(object:GetChildren()) do
+							if child:IsA("TextLabel") and string.find(string.lower(child.Text or ""), "debug", 1, true) then
+								isDebug = true
+								break
+							end
+						end
+					end
+
+					if isDebug then
+						watchTab(object)
+						local page = pageForTab(object)
+						if page and page.Visible then injectInto(page) end
 					end
 				end
 			end
 		end
-		return nil
 	end
 
 	task.spawn(function()
 		while true do
-			task.wait(2)
+			task.wait(0.5)
+			pcall(snapshotPages)
+		end
+	end)
 
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			pcall(scanForDebug)
 			if injected then break end
-
-			local ok, page = pcall(findRenderingPage)
-			if ok and page then pcall(injectInto, page) end
 		end
 	end)
 
@@ -815,5 +903,5 @@ source = configShim .. "\n" .. source
 local chunk, compileError = loadstring(source)
 if not chunk then return notify("compile error: " .. tostring(compileError)) end
 
-notify("Altas loaded | hop/rejoin on the Antilag page")
+notify("Altas loaded | Debug tab: Auto Server Hop / Rejoin")
 chunk()
