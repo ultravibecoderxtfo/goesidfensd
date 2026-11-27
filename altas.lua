@@ -5,7 +5,7 @@
 --   * per-account config storage: atlas/accounts/<UserId>/
 --   * one-time copy of existing global configs into that account folder
 --   * window title: Altas 1.0 Modified by rust96
---   * background image from the local PNG (falls back to the normal window)
+--   * background image: repo background.png -> workspace cache -> local PNG
 --
 -- Run:
 --   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua"))()
@@ -105,22 +105,42 @@ end
 
 local backgroundPatch = [==[
 do
-	local bgSource = "/home/alex/Downloads/92132-972537-sweetie-fox-gamer.png"
 	local bgFile = "altas_bg.png"
+	local bgRemote = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/background.png"
+	local bgLocal = "/home/alex/Downloads/92132-972537-sweetie-fox-gamer.png"
 
-	pcall(function()
-		if isfile and isfile(bgSource) and not (isfile(bgFile) and #readfile(bgFile) > 0) then
-			writefile(bgFile, readfile(bgSource))
-		end
-	end)
+	local function hasBackground()
+		return isfile and isfile(bgFile) and #readfile(bgFile) > 100
+	end
 
-	for _, path in ipairs({ bgFile, bgSource }) do
-		local ok, asset = pcall(getcustomasset, path)
+	if not hasBackground() then
+		pcall(function()
+			local data = game:HttpGet(bgRemote)
+
+			if type(data) == "string" and #data > 100 then
+				writefile(bgFile, data)
+			end
+		end)
+	end
+
+	if not hasBackground() then
+		pcall(function()
+			if isfile and isfile(bgLocal) then
+				writefile(bgFile, readfile(bgLocal))
+			end
+		end)
+	end
+
+	if hasBackground() then
+		local ok, asset = pcall(getcustomasset, bgFile)
 
 		if ok and type(asset) == "string" and #asset > 0 then
 			_G.background = asset
-			break
+		else
+			warn("[Altas] background file found but getcustomasset failed")
 		end
+	else
+		warn("[Altas] no background.png in the repo and no readable local PNG; using the default window")
 	end
 end
 ]==]
