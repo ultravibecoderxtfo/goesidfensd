@@ -5,7 +5,7 @@
 --   * per-account config storage: atlas/accounts/<UserId>/
 --   * one-time copy of existing global configs into that account folder
 --   * window title: Altas 1.0 Modified by rust96
---   * background image: repo background.png -> workspace cache -> local PNG
+--   * background image: workspace cache -> repo background.png -> local PNG
 --
 -- Run:
 --   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua"))()
@@ -108,39 +108,90 @@ do
 	local bgFile = "altas_bg.png"
 	local bgRemote = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/background.png"
 	local bgLocal = "/home/alex/Downloads/92132-972537-sweetie-fox-gamer.png"
+	local asset = nil
 
-	local function hasBackground()
-		return isfile and isfile(bgFile) and #readfile(bgFile) > 100
-	end
+	local function fileSize(path)
+		local ok, data = pcall(readfile, path)
 
-	if not hasBackground() then
-		pcall(function()
-			local data = game:HttpGet(bgRemote)
-
-			if type(data) == "string" and #data > 100 then
-				writefile(bgFile, data)
-			end
-		end)
-	end
-
-	if not hasBackground() then
-		pcall(function()
-			if isfile and isfile(bgLocal) then
-				writefile(bgFile, readfile(bgLocal))
-			end
-		end)
-	end
-
-	if hasBackground() then
-		local ok, asset = pcall(getcustomasset, bgFile)
-
-		if ok and type(asset) == "string" and #asset > 0 then
-			_G.background = asset
-		else
-			warn("[Altas] background file found but getcustomasset failed")
+		if ok and type(data) == "string" then
+			return #data
 		end
+
+		return 0
+	end
+
+	local cached = 0
+
+	if isfile then
+		pcall(function()
+			if isfile(bgFile) then
+				cached = fileSize(bgFile)
+			end
+		end)
+	end
+
+	if cached > 100 then
+		local ok, result = pcall(getcustomasset, bgFile)
+
+		if ok then
+			asset = result
+		end
+
+		warn("[Altas] background: cached file, " .. cached .. " bytes")
 	else
-		warn("[Altas] no background.png in the repo and no readable local PNG; using the default window")
+		local fetchOk, data = pcall(function()
+			return game:HttpGet(bgRemote)
+		end)
+
+		if fetchOk and type(data) == "string" and #data > 100 then
+			local writeOk = pcall(writefile, bgFile, data)
+
+			warn("[Altas] background: downloaded " .. #data .. " bytes, write=" .. tostring(writeOk))
+
+			if writeOk then
+				local ok, result = pcall(getcustomasset, bgFile)
+
+				if ok then
+					asset = result
+				end
+			end
+		else
+			warn("[Altas] background: repo download failed (" .. tostring(data) .. ")")
+
+			local localData = nil
+			pcall(function()
+				localData = readfile(bgLocal)
+			end)
+
+			if type(localData) == "string" and #localData > 100 then
+				writefile(bgFile, localData)
+
+				local ok, result = pcall(getcustomasset, bgFile)
+
+				if ok then
+					asset = result
+				end
+
+				warn("[Altas] background: copied local PNG, " .. #localData .. " bytes")
+			else
+				warn("[Altas] background: local PNG not readable")
+			end
+		end
+	end
+
+	if type(asset) ~= "string" or #asset == 0 then
+		local ok, result = pcall(getcustomasset, bgLocal)
+
+		if ok and type(result) == "string" and #result > 0 then
+			asset = result
+			warn("[Altas] background: getcustomasset accepted the absolute path")
+		end
+	end
+
+	if type(asset) == "string" and #asset > 0 then
+		_G.background = asset
+	else
+		warn("[Altas] background: unavailable, keeping the default window")
 	end
 end
 ]==]
