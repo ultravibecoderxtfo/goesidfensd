@@ -1,6 +1,3 @@
--- Stable Altas entry. This URL never needs to change again:
--- loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/run.lua"))()
-
 local BASE = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/"
 local NONCE = tostring(os.time()) .. tostring(math.random(100000, 999999))
 
@@ -9,6 +6,46 @@ local function notify(text)
 		game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Altas", Text = tostring(text), Duration = 8 })
 	end)
 end
+
+local function roots()
+	local list = {}
+	local ok, hidden = pcall(function() return gethui and gethui() or nil end)
+	if ok and hidden then table.insert(list, hidden) end
+	if _G.atlas then table.insert(list, _G.atlas) end
+	local pg = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
+	if pg then table.insert(list, pg) end
+	pcall(function()
+		local cg = game:GetService("CoreGui")
+		for _, child in ipairs(cg:GetChildren()) do
+			if child:IsA("ScreenGui") then table.insert(list, child) end
+		end
+	end)
+	return list
+end
+
+-- Keep stripping the background for the first 40 seconds of the session.
+task.spawn(function()
+	for _ = 1, 26 do
+		task.wait(1.5)
+
+		pcall(function()
+			if isfile and isfile("altas_bg.png") and delfile then
+				pcall(delfile, "altas_bg.png")
+			end
+		end)
+
+		pcall(function()
+			for _, root in ipairs(roots()) do
+				for _, object in ipairs(root:GetDescendants()) do
+					if object:IsA("ImageLabel") and object.Image ~= ""
+						and object.AbsoluteSize.X > 250 and object.AbsoluteSize.Y > 180 then
+						object.Image = ""
+					end
+				end
+			end
+		end)
+	end
+end)
 
 local function fetch(name)
 	local ok, data = pcall(function()
@@ -46,5 +83,5 @@ if not chunk then
 	return
 end
 
-notify("Altas loaded at " .. tostring(os.time()))
+notify("Altas loaded " .. NONCE)
 chunk()
