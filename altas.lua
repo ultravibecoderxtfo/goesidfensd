@@ -3,16 +3,16 @@
 --
 -- Applies:
 --   * per-account config storage: atlas/accounts/<UserId>/
---   * window title: Altas 1.0 Modified by rust96 v13
+--   * window title: Altas 1.0 Modified by rust96
 --   * background image, resolved before the UI is built
 --   * walkspeed slider max 90, tween slider max 100
 --   * tween speed clamp removed (not just unlocked)
 --   * walk slider applies WalkSpeed on every change, up and down
 --   * black-screen anti-lag HUD with uptime, server uptime, honey, rate, heading
---   * auto server hop / rejoin, driven from the debug console (no extra UI)
+--   * auto server hop / rejoin, in the Debug page when one exists
 --
--- Run (add ?v= to skip any cached copy):
---   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=13"))()
+-- Run:
+--   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua"))()
 --
 -- HUD: opens when you click "Disable 3rd Rendering", or press RightShift.
 --
@@ -145,7 +145,7 @@ do
 
 	local rows = {}
 
-	addLabel("Altas 1.0 - Anti-Lag v13 (RightShift)", 14, Color3.fromRGB(255, 255, 255))
+	addLabel("Altas 1.0 - Anti-Lag (RightShift)", 14, Color3.fromRGB(255, 255, 255))
 	rows.uptime = addLabel("Uptime: 00:00:00")
 	rows.server = addLabel("Server Uptime: 00:00:00")
 	rows.honey = addLabel("Session Honey: 0")
@@ -380,8 +380,34 @@ do
 		end
 	end)
 
-	-- Attach to the real "Disable 3rd Rendering" control: clicking it toggles this HUD.
+	-- Clicking the antilag row toggles this HUD. Attach to every button in that row
+	-- because the switch is often a sibling of the label, not its parent.
 	local watched = {}
+
+	local function attach(button)
+		if not button or not button:IsA("GuiButton") or watched[button] then
+			return
+		end
+
+		watched[button] = true
+
+		button.MouseButton1Click:Connect(function()
+			manual = not gui.Enabled
+			apply()
+		end)
+	end
+
+	local function matchesRenderingToggle(text)
+		if not text then
+			return false
+		end
+
+		local rendering = string.find(text, "render", 1, true) ~= nil
+		local third = string.find(text, "3rd", 1, true) ~= nil or string.find(text, "3d", 1, true) ~= nil
+		local disable = string.find(text, "disab", 1, true) ~= nil
+
+		return rendering and (third or disable)
+	end
 
 	local function connectRenderingToggle()
 		for _, root in ipairs(candidateRoots()) do
@@ -392,22 +418,24 @@ do
 					text = string.lower(object.Text or "")
 				end
 
-				if text and (string.find(text, "3rd rendering", 1, true) or string.find(text, "3d rendering", 1, true)) then
-					local clickable = object
+				if matchesRenderingToggle(text) then
+					attach(object)
+
+					local ancestor = object.Parent
 					local depth = 0
 
-					while clickable and not clickable:IsA("GuiButton") and depth < 6 do
-						clickable = clickable.Parent
+					while ancestor and depth < 4 do
+						attach(ancestor)
 						depth += 1
+						ancestor = ancestor.Parent
 					end
 
-					if clickable and clickable:IsA("GuiButton") and not watched[clickable] then
-						watched[clickable] = true
-
-						clickable.MouseButton1Click:Connect(function()
-							manual = not gui.Enabled
-							apply()
-						end)
+					if object.Parent then
+						for _, sibling in ipairs(object.Parent:GetDescendants()) do
+							if sibling:IsA("GuiButton") then
+								attach(sibling)
+							end
+						end
 					end
 				end
 			end
@@ -453,6 +481,7 @@ do
 	local Players = game:GetService("Players")
 	local TeleportService = game:GetService("TeleportService")
 	local HttpService = game:GetService("HttpService")
+	local UserInputService = game:GetService("UserInputService")
 	local player = Players.LocalPlayer
 	local accountId = tostring(player.UserId)
 	local settingsPath = "atlas/accounts/" .. accountId .. "/automation.json"
@@ -624,6 +653,245 @@ do
 			}
 		end,
 	}
+
+	local function findUiRoots()
+		local roots = {}
+		local ok, hidden = pcall(function()
+			return gethui and gethui() or nil
+		end)
+
+		if ok and hidden then
+			table.insert(roots, hidden)
+		end
+
+		if _G.atlas then
+			table.insert(roots, _G.atlas)
+		end
+
+		local playerGui = player:FindFirstChild("PlayerGui")
+
+		if playerGui then
+			table.insert(roots, playerGui)
+		end
+
+		pcall(function()
+			local coreGui = game:GetService("CoreGui")
+
+			for _, child in ipairs(coreGui:GetChildren()) do
+				if child:IsA("ScreenGui") then
+					table.insert(roots, child)
+				end
+			end
+		end)
+
+		return roots
+	end
+
+	local function createToggle(parent, y, labelText, state, onChange)
+		local button = Instance.new("TextButton")
+		button.Position = UDim2.new(0, 0, 0, y)
+		button.Size = UDim2.new(1, 0, 0, 24)
+		button.BackgroundColor3 = state and Color3.fromRGB(46, 82, 58) or Color3.fromRGB(30, 30, 34)
+		button.BorderSizePixel = 0
+		button.Font = Enum.Font.Code
+		button.TextSize = 12
+		button.TextColor3 = Color3.fromRGB(230, 230, 230)
+		button.TextXAlignment = Enum.TextXAlignment.Left
+		button.Text = "  " .. labelText .. ": " .. (state and "ON" or "OFF")
+		button.Parent = parent
+
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 4)
+		corner.Parent = button
+
+		local on = state
+
+		button.MouseButton1Click:Connect(function()
+			on = not on
+			button.Text = "  " .. labelText .. ": " .. (on and "ON" or "OFF")
+			button.BackgroundColor3 = on and Color3.fromRGB(46, 82, 58) or Color3.fromRGB(30, 30, 34)
+			onChange(on)
+		end)
+	end
+
+	local function createSlider(parent, y, labelText, minValue, maxValue, initial, onChange)
+		local label = Instance.new("TextLabel")
+		label.Position = UDim2.new(0, 0, 0, y)
+		label.Size = UDim2.new(1, 0, 0, 14)
+		label.BackgroundTransparency = 1
+		label.Font = Enum.Font.Code
+		label.TextSize = 11
+		label.TextColor3 = Color3.fromRGB(210, 210, 210)
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.Text = labelText .. ": " .. initial .. " min"
+		label.Parent = parent
+
+		local bar = Instance.new("Frame")
+		bar.Position = UDim2.new(0, 0, 0, y + 17)
+		bar.Size = UDim2.new(1, 0, 0, 6)
+		bar.BackgroundColor3 = Color3.fromRGB(50, 50, 56)
+		bar.BorderSizePixel = 0
+		bar.Parent = parent
+
+		local barCorner = Instance.new("UICorner")
+		barCorner.CornerRadius = UDim.new(1, 0)
+		barCorner.Parent = bar
+
+		local fill = Instance.new("Frame")
+		fill.Size = UDim2.fromScale((initial - minValue) / math.max(maxValue - minValue, 1), 1)
+		fill.BackgroundColor3 = Color3.fromRGB(120, 170, 255)
+		fill.BorderSizePixel = 0
+		fill.Parent = bar
+
+		local fillCorner = Instance.new("UICorner")
+		fillCorner.CornerRadius = UDim.new(1, 0)
+		fillCorner.Parent = fill
+
+		local current = initial
+		local dragging = false
+
+		local function applyX(x)
+			local relative = math.clamp((x - bar.AbsolutePosition.X) / math.max(bar.AbsoluteSize.X, 1), 0, 1)
+			local value = math.floor(minValue + (maxValue - minValue) * relative + 0.5)
+
+			if value ~= current then
+				current = value
+				label.Text = labelText .. ": " .. value .. " min"
+				fill.Size = UDim2.fromScale((value - minValue) / math.max(maxValue - minValue, 1), 1)
+				onChange(value)
+			end
+		end
+
+		bar.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = true
+				applyX(input.Position.X)
+			end
+		end)
+
+		UserInputService.InputChanged:Connect(function(input)
+			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+				applyX(input.Position.X)
+			end
+		end)
+
+		UserInputService.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = false
+			end
+		end)
+	end
+
+	local injected = false
+
+	local function tryInjectDebug()
+		if injected then
+			return
+		end
+
+		for _, root in ipairs(findUiRoots()) do
+			for _, object in ipairs(root:GetDescendants()) do
+				if (object:IsA("ScrollingFrame") or object:IsA("Frame"))
+					and string.find(string.lower(object.Name), "debug", 1, true) then
+					local hasLayout = object:FindFirstChildOfClass("UIListLayout") ~= nil
+					local hasButtons = false
+
+					for _, child in ipairs(object:GetDescendants()) do
+						if child:IsA("GuiButton") then
+							hasButtons = true
+							break
+						end
+					end
+
+					if hasLayout and hasButtons then
+						local section = Instance.new("Frame")
+						section.Name = "AltasAutomationSection"
+						section.LayoutOrder = 10000
+						section.Size = UDim2.new(1, 0, 0, 176)
+						section.BackgroundTransparency = 1
+						section.Parent = object
+
+						local header = Instance.new("TextLabel")
+						header.Position = UDim2.new(0, 0, 0, 0)
+						header.Size = UDim2.new(1, 0, 0, 16)
+						header.BackgroundTransparency = 1
+						header.Font = Enum.Font.Code
+						header.TextSize = 12
+						header.TextColor3 = Color3.fromRGB(255, 255, 255)
+						header.TextXAlignment = Enum.TextXAlignment.Left
+						header.Text = "Auto Server Hop / Rejoin"
+						header.Parent = section
+
+						createToggle(section, 18, "Auto Server Hop", settings.hopEnabled, function(state)
+							if state then
+								startHop(settings.hopMinutes)
+							else
+								stopHop()
+							end
+						end)
+
+						createSlider(section, 46, "Hop every", 1, 60, settings.hopMinutes, function(value)
+							settings.hopMinutes = value
+							hopRemaining = value * 60
+							dirty = true
+						end)
+
+						createToggle(section, 78, "Auto Rejoin", settings.rejoinEnabled, function(state)
+							if state then
+								startRejoin(settings.rejoinMinutes)
+							else
+								stopRejoin()
+							end
+						end)
+
+						createSlider(section, 106, "Rejoin every", 1, 60, settings.rejoinMinutes, function(value)
+							settings.rejoinMinutes = value
+							rejoinRemaining = value * 60
+							dirty = true
+						end)
+
+						local status = Instance.new("TextLabel")
+						status.Name = "Status"
+						status.Position = UDim2.new(0, 0, 0, 138)
+						status.Size = UDim2.new(1, 0, 0, 14)
+						status.BackgroundTransparency = 1
+						status.Font = Enum.Font.Code
+						status.TextSize = 10
+						status.TextColor3 = Color3.fromRGB(160, 200, 160)
+						status.TextXAlignment = Enum.TextXAlignment.Left
+						status.Text = ""
+						status.Parent = section
+
+						if object:IsA("ScrollingFrame") and object.AutomaticCanvasSize == Enum.AutomaticSize.None then
+							pcall(function()
+								object.CanvasSize = UDim2.new(object.CanvasSize.X.Scale, object.CanvasSize.X.Offset, 0, object.CanvasSize.Y.Offset + 180)
+							end)
+						end
+
+						injected = true
+
+						task.spawn(function()
+							while true do
+								task.wait(1)
+								pcall(function()
+									status.Text = _G.atlasAutomationStatus or ""
+								end)
+							end
+						end)
+
+						return
+					end
+				end
+			end
+		end
+	end
+
+	task.spawn(function()
+		while true do
+			task.wait(3)
+			pcall(tryInjectDebug)
+		end
+	end)
 
 	task.spawn(function()
 		local last = os.clock()
@@ -955,10 +1223,10 @@ if type(writefile) == "function" then
 end
 
 local titlePatched = false
-source, titlePatched = replaceOnce(source, "local title = _G.title and", "local title = \"Altas 1.0 Modified by rust96 v13\" or _G.title and")
+source, titlePatched = replaceOnce(source, "local title = _G.title and", "local title = \"Altas 1.0 Modified by rust96\" or _G.title and")
 
 if not titlePatched then
-	source, titlePatched = replaceOnce(source, "\"deobfuscated by skynex - .gg/syncrypt\"", "\"Altas 1.0 Modified by rust96 v13\"")
+	source, titlePatched = replaceOnce(source, "\"deobfuscated by skynex - .gg/syncrypt\"", "\"Altas 1.0 Modified by rust96\"")
 end
 
 local tweenClampPatched = false
@@ -977,6 +1245,6 @@ if not chunk then
 	return notify("compile error: " .. tostring(compileError))
 end
 
-notify("Altas v13 loaded | RightShift = HUD | dumps: " .. (#dumpNotes > 0 and table.concat(dumpNotes, " ") or "none"))
+notify("Altas loaded | RightShift = HUD | " .. (#dumpNotes > 0 and "dumps ready" or "no dumps"))
 
 chunk()
