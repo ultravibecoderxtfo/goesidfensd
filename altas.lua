@@ -1,27 +1,8 @@
 -- Altas 1.0 Modified by rust96
--- Entry point for the Altas source (main.lua) in this repository.
+-- Run: loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua"))()
 --
--- Applies:
---   * per-account config storage: atlas/accounts/<UserId>/
---   * window title: Altas 1.0 Modified by rust96
---   * background image, resolved before the UI is built
---   * walkspeed slider max 90, tween slider max 100
---   * tween speed clamp removed (not just unlocked)
---   * walk slider applies WalkSpeed on every change, up and down
---   * black-screen anti-lag HUD with uptime, server uptime, honey, rate, heading
---   * auto server hop / rejoin, in the Debug page when one exists
---
--- Run:
---   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua"))()
---
--- HUD: opens when you click "Disable 3rd Rendering", or press RightShift.
---
--- Debug console:
---   _G.atlasAutomation.hop(10)      auto server hop every 10 min
---   _G.atlasAutomation.rejoin(10)   auto rejoin every 10 min
---   _G.atlasAutomation.stopHop()    _G.atlasAutomation.stopRejoin()
---   _G.atlasAutomation.status()
---   _G.atlasHud(true)               show the black-screen HUD now, false hides it
+-- Per-account configs, title, background, walk 90 / tween 100, tween clamp off,
+-- black-screen HUD on "Disable 3rd Rendering", auto hop/rejoin in the Debug page.
 
 local REPO = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/"
 local NONCE = tostring(os.time()) .. tostring(math.random(1000, 9999))
@@ -29,40 +10,25 @@ local SOURCE_URL = REPO .. "main.lua?v=" .. NONCE
 
 local function notify(text)
 	pcall(function()
-		game:GetService("StarterGui"):SetCore("SendNotification", {
-			Title = "Altas",
-			Text = tostring(text),
-			Duration = 8,
-		})
+		game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Altas", Text = tostring(text), Duration = 8 })
 	end)
 end
 
 local function replaceOnce(source, needle, replacement)
 	local index = string.find(source, needle, 1, true)
-
-	if not index then
-		return source, false
-	end
-
+	if not index then return source, false end
 	return string.sub(source, 1, index - 1) .. replacement .. string.sub(source, index + #needle), true
 end
 
 local function replaceAll(source, needle, replacement)
-	local count = 0
-	local index = 1
-
+	local count, index = 0, 1
 	while true do
 		local start = string.find(source, needle, index, true)
-
-		if not start then
-			break
-		end
-
+		if not start then break end
 		source = string.sub(source, 1, start - 1) .. replacement .. string.sub(source, start + #needle)
 		index = start + #replacement
 		count += 1
 	end
-
 	return source, count
 end
 
@@ -70,7 +36,6 @@ local HUD
 
 do
 	local Players = game:GetService("Players")
-	local UserInputService = game:GetService("UserInputService")
 	local player = Players.LocalPlayer
 	local sessionStart = os.clock()
 
@@ -81,15 +46,8 @@ do
 	gui.DisplayOrder = 1000
 	gui.Enabled = false
 
-	pcall(function()
-		gui.Parent = gethui and gethui() or game:GetService("CoreGui")
-	end)
-
-	if not gui.Parent then
-		pcall(function()
-			gui.Parent = game:GetService("CoreGui")
-		end)
-	end
+	pcall(function() gui.Parent = gethui and gethui() or game:GetService("CoreGui") end)
+	if not gui.Parent then pcall(function() gui.Parent = game:GetService("CoreGui") end) end
 
 	local black = Instance.new("Frame")
 	black.Name = "Black"
@@ -125,10 +83,8 @@ do
 	layout.Parent = panel
 
 	local order = 0
-
 	local function addLabel(text, size, color)
 		order += 1
-
 		local label = Instance.new("TextLabel")
 		label.LayoutOrder = order
 		label.BackgroundTransparency = 1
@@ -139,13 +95,11 @@ do
 		label.Text = text
 		label.Size = UDim2.new(1, 0, 0, (size or 14) + 4)
 		label.Parent = panel
-
 		return label
 	end
 
 	local rows = {}
-
-	addLabel("Altas 1.0 - Anti-Lag (RightShift)", 14, Color3.fromRGB(255, 255, 255))
+	addLabel("Altas 1.0 - Anti-Lag", 14, Color3.fromRGB(255, 255, 255))
 	rows.uptime = addLabel("Uptime: 00:00:00")
 	rows.server = addLabel("Server Uptime: 00:00:00")
 	rows.honey = addLabel("Session Honey: 0")
@@ -160,119 +114,69 @@ do
 
 	local function formatNumber(value)
 		value = tonumber(value) or 0
-
 		local suffixes = { "", "k", "M", "B", "T", "Qd", "Qn", "Sx", "Sp", "O", "N" }
-		local index = 1
-		local absolute = math.abs(value)
-
+		local index, absolute = 1, math.abs(value)
 		while absolute >= 1000 and index < #suffixes do
 			absolute /= 1000
 			value /= 1000
 			index += 1
 		end
-
-		if index == 1 then
-			return tostring(math.floor(value))
-		end
-
+		if index == 1 then return tostring(math.floor(value)) end
 		return string.format("%.2f%s", value, suffixes[index])
 	end
 
 	local function currentHoney()
-		local ok, value = pcall(function()
-			return player.CoreStats.Honey.Value
-		end)
-
-		if ok and type(value) == "number" then
-			return value
-		end
-
+		local ok, value = pcall(function() return player.CoreStats.Honey.Value end)
+		if ok and type(value) == "number" then return value end
 		return nil
 	end
 
 	local honeyStart = currentHoney()
 
 	local function hiddenRoot()
-		local ok, value = pcall(function()
-			return gethui and gethui() or nil
-		end)
-
-		if ok then
-			return value
-		end
-
+		local ok, value = pcall(function() return gethui and gethui() or nil end)
+		if ok then return value end
 		return nil
 	end
 
 	local function candidateRoots()
-		local roots = {}
-		local seen = {}
-
+		local roots, seen = {}, {}
 		local function add(root)
-			if root and not seen[root] then
-				seen[root] = true
-				table.insert(roots, root)
-			end
+			if root and not seen[root] then seen[root] = true; table.insert(roots, root) end
 		end
-
 		add(hiddenRoot())
 		add(_G.atlas)
-
-		local ok, coreGui = pcall(function()
-			return game:GetService("CoreGui")
-		end)
-
+		local ok, coreGui = pcall(function() return game:GetService("CoreGui") end)
 		if ok and coreGui then
 			for _, child in ipairs(coreGui:GetChildren()) do
-				if child:IsA("ScreenGui") then
-					add(child)
-				end
+				if child:IsA("ScreenGui") then add(child) end
 			end
 		end
-
 		local playerGui = player:FindFirstChild("PlayerGui")
-
 		if playerGui then
 			for _, child in ipairs(playerGui:GetChildren()) do
-				if child:IsA("ScreenGui") then
-					add(child)
-				end
+				if child:IsA("ScreenGui") then add(child) end
 			end
 		end
-
 		return roots
 	end
 
 	local function lastConsoleLine()
 		for _, root in ipairs(candidateRoots()) do
 			local bar = nil
-
 			for _, object in ipairs(root:GetDescendants()) do
-				if object:IsA("TextLabel") and object.Text == "Atlas Console" then
-					bar = object
-					break
-				end
+				if object:IsA("TextLabel") and object.Text == "Atlas Console" then bar = object; break end
 			end
-
 			if bar and bar.Parent and bar.Parent.Parent then
 				local scrolling = nil
-
 				for _, object in ipairs(bar.Parent.Parent:GetDescendants()) do
-					if object:IsA("ScrollingFrame") then
-						scrolling = object
-						break
-					end
+					if object:IsA("ScrollingFrame") then scrolling = object; break end
 				end
-
 				if scrolling then
 					local text = nil
-
 					for _, child in ipairs(scrolling:GetChildren()) do
-						if child:IsA("TextLabel") and #child.Text > 0 then
-							text = child.Text
-						end
+						if child:IsA("TextLabel") and #child.Text > 0 then text = child.Text end
 					end
-
 					if text then
 						text = string.gsub(text, "^%[[^%]]*%] %[[^%]]*%] ", "")
 						return text
@@ -280,7 +184,6 @@ do
 				end
 			end
 		end
-
 		return nil
 	end
 
@@ -288,73 +191,23 @@ do
 		local session = os.clock() - sessionStart
 		local honey = currentHoney()
 		local gained = 0
-
-		if honey and honeyStart then
-			gained = honey - honeyStart
-		end
-
+		if honey and honeyStart then gained = honey - honeyStart end
 		rows.uptime.Text = "Uptime: " .. formatTime(session)
 		rows.server.Text = "Server Uptime: " .. formatTime(workspace.DistributedGameTime)
 		rows.honey.Text = "Session Honey: " .. formatNumber(gained)
 		rows.rate.Text = "Honey per Hour: " .. formatNumber(session > 5 and gained / (session / 3600) or 0)
 		rows.auto.Text = _G.atlasAutomationStatus or ""
-
 		local heading = lastConsoleLine()
 		rows.heading.Text = "Heading: " .. (heading and string.sub(heading, 1, 42) or "-")
 	end
 
-	local function isBlackFullScreen(object)
-		if not object:IsA("Frame") or not object.Visible or object.BackgroundTransparency > 0.05 then
-			return false
-		end
-
-		if object:IsDescendantOf(gui) then
-			return false
-		end
-
-		local color = object.BackgroundColor3
-
-		if color.R > 0.03 or color.G > 0.03 or color.B > 0.03 then
-			return false
-		end
-
-		local camera = workspace.CurrentCamera
-		local viewport = camera and camera.ViewportSize or Vector2.new(1920, 1080)
-		local size = object.AbsoluteSize
-
-		return size.X >= viewport.X * 0.98 and size.Y >= viewport.Y * 0.98
-	end
-
-	local function blackScreenShowing()
-		for _, root in ipairs(candidateRoots()) do
-			for _, object in ipairs(root:GetDescendants()) do
-				if isBlackFullScreen(object) then
-					return true
-				end
-			end
-		end
-
-		return false
-	end
-
 	local manual = nil
 	local hookVisible = false
-	local autoVisible = false
 
 	local function apply()
-		local visible
-
-		if manual ~= nil then
-			visible = manual
-		else
-			visible = hookVisible or autoVisible
-		end
-
+		local visible = manual ~= nil and manual or hookVisible
 		gui.Enabled = visible and true or false
-
-		if gui.Enabled then
-			pcall(refresh)
-		end
+		if gui.Enabled then pcall(refresh) end
 	end
 
 	HUD = {}
@@ -369,28 +222,11 @@ do
 		apply()
 	end
 
-	UserInputService.InputBegan:Connect(function(input, processed)
-		if processed then
-			return
-		end
-
-		if input.KeyCode == Enum.KeyCode.RightShift then
-			manual = not gui.Enabled
-			apply()
-		end
-	end)
-
-	-- Clicking the antilag row toggles this HUD. Attach to every button in that row
-	-- because the switch is often a sibling of the label, not its parent.
 	local watched = {}
 
 	local function attach(button)
-		if not button or not button:IsA("GuiButton") or watched[button] then
-			return
-		end
-
+		if not button or not button:IsA("GuiButton") or watched[button] then return end
 		watched[button] = true
-
 		button.MouseButton1Click:Connect(function()
 			manual = not gui.Enabled
 			apply()
@@ -398,14 +234,10 @@ do
 	end
 
 	local function matchesRenderingToggle(text)
-		if not text then
-			return false
-		end
-
+		if not text then return false end
 		local rendering = string.find(text, "render", 1, true) ~= nil
 		local third = string.find(text, "3rd", 1, true) ~= nil or string.find(text, "3d", 1, true) ~= nil
 		local disable = string.find(text, "disab", 1, true) ~= nil
-
 		return rendering and (third or disable)
 	end
 
@@ -413,28 +245,22 @@ do
 		for _, root in ipairs(candidateRoots()) do
 			for _, object in ipairs(root:GetDescendants()) do
 				local text = nil
-
-				if object:IsA("TextLabel") or object:IsA("TextButton") then
-					text = string.lower(object.Text or "")
-				end
-
+				if object:IsA("TextLabel") or object:IsA("TextButton") then text = string.lower(object.Text or "") end
 				if matchesRenderingToggle(text) then
 					attach(object)
-
-					local ancestor = object.Parent
-					local depth = 0
-
+					local ancestor, depth = object.Parent, 0
 					while ancestor and depth < 4 do
 						attach(ancestor)
 						depth += 1
 						ancestor = ancestor.Parent
 					end
-
 					if object.Parent then
+						local buttons = {}
 						for _, sibling in ipairs(object.Parent:GetDescendants()) do
-							if sibling:IsA("GuiButton") then
-								attach(sibling)
-							end
+							if sibling:IsA("GuiButton") then table.insert(buttons, sibling) end
+						end
+						if #buttons <= 6 then
+							for _, button in ipairs(buttons) do attach(button) end
 						end
 					end
 				end
@@ -452,25 +278,7 @@ do
 	task.spawn(function()
 		while true do
 			task.wait(1)
-
-			if manual == nil then
-				local ok, detected = pcall(blackScreenShowing)
-
-				if ok then
-					autoVisible = detected
-					apply()
-				end
-			end
-		end
-	end)
-
-	task.spawn(function()
-		while true do
-			task.wait(1)
-
-			if gui.Enabled then
-				pcall(refresh)
-			end
+			if gui.Enabled then pcall(refresh) end
 		end
 	end)
 end
@@ -486,30 +294,19 @@ do
 	local accountId = tostring(player.UserId)
 	local settingsPath = "atlas/accounts/" .. accountId .. "/automation.json"
 
-	local settings = {
-		hopEnabled = false,
-		hopMinutes = 10,
-		rejoinEnabled = false,
-		rejoinMinutes = 10,
-	}
+	local settings = { hopEnabled = false, hopMinutes = 10, rejoinEnabled = false, rejoinMinutes = 10 }
 
 	pcall(function()
 		if makefolder and isfolder then
 			for _, folder in ipairs({ "atlas", "atlas/accounts", "atlas/accounts/" .. accountId }) do
-				if not isfolder(folder) then
-					makefolder(folder)
-				end
+				if not isfolder(folder) then makefolder(folder) end
 			end
 		end
 	end)
 
 	pcall(function()
 		if isfile and isfile(settingsPath) and readfile then
-			local data = readfile(settingsPath)
-			local ok, decoded = pcall(function()
-				return HttpService:JSONDecode(data)
-			end)
-
+			local ok, decoded = pcall(function() return HttpService:JSONDecode(readfile(settingsPath)) end)
 			if ok and type(decoded) == "table" then
 				settings.hopEnabled = decoded.hopEnabled == true
 				settings.hopMinutes = math.clamp(tonumber(decoded.hopMinutes) or 10, 1, 60)
@@ -522,69 +319,33 @@ do
 	local dirty = false
 
 	local function save()
-		local ok, encoded = pcall(function()
-			return HttpService:JSONEncode(settings)
-		end)
-
-		if ok and writefile then
-			pcall(writefile, settingsPath, encoded)
-		end
+		local ok, encoded = pcall(function() return HttpService:JSONEncode(settings) end)
+		if ok and writefile then pcall(writefile, settingsPath, encoded) end
 	end
 
 	local function hop()
 		local ok, body = pcall(function()
 			return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
 		end)
-
-		if not ok or type(body) ~= "string" then
-			notify("server hop: request failed")
-			return
-		end
-
+		if not ok or type(body) ~= "string" then notify("server hop: request failed"); return end
 		local decoded
-
-		pcall(function()
-			decoded = HttpService:JSONDecode(body)
-		end)
-
+		pcall(function() decoded = HttpService:JSONDecode(body) end)
 		local servers = decoded and decoded.data
-
-		if type(servers) ~= "table" then
-			notify("server hop: no server list")
-			return
-		end
-
+		if type(servers) ~= "table" then notify("server hop: no server list"); return end
 		local options = {}
-
 		for _, server in ipairs(servers) do
 			local playing = tonumber(server.playing) or 0
 			local maxPlayers = tonumber(server.maxPlayers) or 0
-
-			if server.id and server.id ~= game.JobId and playing < maxPlayers then
-				table.insert(options, server.id)
-			end
+			if server.id and server.id ~= game.JobId and playing < maxPlayers then table.insert(options, server.id) end
 		end
-
-		if #options == 0 then
-			notify("server hop: no open servers")
-			return
-		end
-
-		local target = options[math.random(1, #options)]
-
+		if #options == 0 then notify("server hop: no open servers"); return end
 		notify("server hopping")
-
-		pcall(function()
-			TeleportService:TeleportToPlaceInstance(game.PlaceId, target, player)
-		end)
+		pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, options[math.random(1, #options)], player) end)
 	end
 
 	local function rejoin()
 		notify("rejoining")
-
-		pcall(function()
-			TeleportService:Teleport(game.PlaceId, player)
-		end)
+		pcall(function() TeleportService:Teleport(game.PlaceId, player) end)
 	end
 
 	local hopRemaining = settings.hopMinutes * 60
@@ -645,45 +406,23 @@ do
 		rejoin = startRejoin,
 		stopRejoin = stopRejoin,
 		status = function()
-			return {
-				hopEnabled = settings.hopEnabled,
-				hopMinutes = settings.hopMinutes,
-				rejoinEnabled = settings.rejoinEnabled,
-				rejoinMinutes = settings.rejoinMinutes,
-			}
+			return { hopEnabled = settings.hopEnabled, hopMinutes = settings.hopMinutes, rejoinEnabled = settings.rejoinEnabled, rejoinMinutes = settings.rejoinMinutes }
 		end,
 	}
 
 	local function findUiRoots()
 		local roots = {}
-		local ok, hidden = pcall(function()
-			return gethui and gethui() or nil
-		end)
-
-		if ok and hidden then
-			table.insert(roots, hidden)
-		end
-
-		if _G.atlas then
-			table.insert(roots, _G.atlas)
-		end
-
+		local ok, hidden = pcall(function() return gethui and gethui() or nil end)
+		if ok and hidden then table.insert(roots, hidden) end
+		if _G.atlas then table.insert(roots, _G.atlas) end
 		local playerGui = player:FindFirstChild("PlayerGui")
-
-		if playerGui then
-			table.insert(roots, playerGui)
-		end
-
+		if playerGui then table.insert(roots, playerGui) end
 		pcall(function()
 			local coreGui = game:GetService("CoreGui")
-
 			for _, child in ipairs(coreGui:GetChildren()) do
-				if child:IsA("ScreenGui") then
-					table.insert(roots, child)
-				end
+				if child:IsA("ScreenGui") then table.insert(roots, child) end
 			end
 		end)
-
 		return roots
 	end
 
@@ -699,13 +438,10 @@ do
 		button.TextXAlignment = Enum.TextXAlignment.Left
 		button.Text = "  " .. labelText .. ": " .. (state and "ON" or "OFF")
 		button.Parent = parent
-
 		local corner = Instance.new("UICorner")
 		corner.CornerRadius = UDim.new(0, 4)
 		corner.Parent = button
-
 		local on = state
-
 		button.MouseButton1Click:Connect(function()
 			on = not on
 			button.Text = "  " .. labelText .. ": " .. (on and "ON" or "OFF")
@@ -725,35 +461,27 @@ do
 		label.TextXAlignment = Enum.TextXAlignment.Left
 		label.Text = labelText .. ": " .. initial .. " min"
 		label.Parent = parent
-
 		local bar = Instance.new("Frame")
 		bar.Position = UDim2.new(0, 0, 0, y + 17)
 		bar.Size = UDim2.new(1, 0, 0, 6)
 		bar.BackgroundColor3 = Color3.fromRGB(50, 50, 56)
 		bar.BorderSizePixel = 0
 		bar.Parent = parent
-
 		local barCorner = Instance.new("UICorner")
 		barCorner.CornerRadius = UDim.new(1, 0)
 		barCorner.Parent = bar
-
 		local fill = Instance.new("Frame")
 		fill.Size = UDim2.fromScale((initial - minValue) / math.max(maxValue - minValue, 1), 1)
 		fill.BackgroundColor3 = Color3.fromRGB(120, 170, 255)
 		fill.BorderSizePixel = 0
 		fill.Parent = bar
-
 		local fillCorner = Instance.new("UICorner")
 		fillCorner.CornerRadius = UDim.new(1, 0)
 		fillCorner.Parent = fill
-
-		local current = initial
-		local dragging = false
-
+		local current, dragging = initial, false
 		local function applyX(x)
 			local relative = math.clamp((x - bar.AbsolutePosition.X) / math.max(bar.AbsoluteSize.X, 1), 0, 1)
 			local value = math.floor(minValue + (maxValue - minValue) * relative + 0.5)
-
 			if value ~= current then
 				current = value
 				label.Text = labelText .. ": " .. value .. " min"
@@ -761,20 +489,17 @@ do
 				onChange(value)
 			end
 		end
-
 		bar.InputBegan:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 				dragging = true
 				applyX(input.Position.X)
 			end
 		end)
-
 		UserInputService.InputChanged:Connect(function(input)
 			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 				applyX(input.Position.X)
 			end
 		end)
-
 		UserInputService.InputEnded:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 				dragging = false
@@ -784,128 +509,208 @@ do
 
 	local injected = false
 
-	local function tryInjectDebug()
-		if injected then
-			return
+	local function injectInto(page)
+		if injected or not page then return end
+		if page:FindFirstChild("AltasAutomationSection", true) then injected = true; return end
+
+		local section = Instance.new("Frame")
+		section.Name = "AltasAutomationSection"
+		section.LayoutOrder = 10000
+		section.Size = UDim2.new(1, 0, 0, 176)
+		section.BackgroundTransparency = 1
+		section.Parent = page
+
+		local header = Instance.new("TextLabel")
+		header.Position = UDim2.new(0, 0, 0, 0)
+		header.Size = UDim2.new(1, 0, 0, 16)
+		header.BackgroundTransparency = 1
+		header.Font = Enum.Font.Code
+		header.TextSize = 12
+		header.TextColor3 = Color3.fromRGB(255, 255, 255)
+		header.TextXAlignment = Enum.TextXAlignment.Left
+		header.Text = "Auto Server Hop / Rejoin"
+		header.Parent = section
+
+		createToggle(section, 18, "Auto Server Hop", settings.hopEnabled, function(state)
+			if state then startHop(settings.hopMinutes) else stopHop() end
+		end)
+
+		createSlider(section, 46, "Hop every", 1, 60, settings.hopMinutes, function(value)
+			settings.hopMinutes = value
+			hopRemaining = value * 60
+			dirty = true
+		end)
+
+		createToggle(section, 78, "Auto Rejoin", settings.rejoinEnabled, function(state)
+			if state then startRejoin(settings.rejoinMinutes) else stopRejoin() end
+		end)
+
+		createSlider(section, 106, "Rejoin every", 1, 60, settings.rejoinMinutes, function(value)
+			settings.rejoinMinutes = value
+			rejoinRemaining = value * 60
+			dirty = true
+		end)
+
+		local status = Instance.new("TextLabel")
+		status.Name = "Status"
+		status.Position = UDim2.new(0, 0, 0, 138)
+		status.Size = UDim2.new(1, 0, 0, 14)
+		status.BackgroundTransparency = 1
+		status.Font = Enum.Font.Code
+		status.TextSize = 10
+		status.TextColor3 = Color3.fromRGB(160, 200, 160)
+		status.TextXAlignment = Enum.TextXAlignment.Left
+		status.Text = ""
+		status.Parent = section
+
+		if page:IsA("ScrollingFrame") and page.AutomaticCanvasSize == Enum.AutomaticSize.None then
+			pcall(function()
+				page.CanvasSize = UDim2.new(page.CanvasSize.X.Scale, page.CanvasSize.X.Offset, 0, page.CanvasSize.Y.Offset + 180)
+			end)
 		end
 
+		injected = true
+
+		task.spawn(function()
+			while true do
+				task.wait(1)
+				pcall(function() status.Text = _G.atlasAutomationStatus or "" end)
+			end
+		end)
+	end
+
+	local function hasButton(page)
+		for _, child in ipairs(page:GetDescendants()) do
+			if child:IsA("GuiButton") then return true end
+		end
+		return false
+	end
+
+	local function tryNamedDebug()
+		if injected then return end
 		for _, root in ipairs(findUiRoots()) do
 			for _, object in ipairs(root:GetDescendants()) do
 				if (object:IsA("ScrollingFrame") or object:IsA("Frame"))
-					and string.find(string.lower(object.Name), "debug", 1, true) then
-					local hasLayout = object:FindFirstChildOfClass("UIListLayout") ~= nil
-					local hasButtons = false
+					and string.find(string.lower(object.Name), "debug", 1, true)
+					and object:FindFirstChildOfClass("UIListLayout")
+					and hasButton(object) then
+					injectInto(object)
+					return
+				end
+			end
+		end
+	end
 
-					for _, child in ipairs(object:GetDescendants()) do
-						if child:IsA("GuiButton") then
-							hasButtons = true
-							break
+	local pageVisible = {}
+
+	local function snapshotPages()
+		for _, root in ipairs(findUiRoots()) do
+			for _, object in ipairs(root:GetDescendants()) do
+				if object:IsA("ScrollingFrame") or (object:IsA("Frame") and object:FindFirstChildOfClass("UIListLayout")) then
+					pageVisible[object] = object.Visible
+				end
+			end
+		end
+	end
+
+	local function tryNewlyVisiblePage()
+		if injected then return end
+		for _, root in ipairs(findUiRoots()) do
+			for _, object in ipairs(root:GetDescendants()) do
+				if (object:IsA("ScrollingFrame") or object:IsA("Frame"))
+					and object.Visible
+					and pageVisible[object] == false
+					and object:FindFirstChildOfClass("UIListLayout")
+					and hasButton(object) then
+					injectInto(object)
+					return
+				end
+			end
+		end
+	end
+
+	local debugWatched = {}
+
+	local function onDebugClicked()
+		task.delay(0.35, function()
+			if not injected then pcall(tryNewlyVisiblePage) end
+		end)
+	end
+
+	local function watchDebugTab()
+		for _, root in ipairs(findUiRoots()) do
+			for _, object in ipairs(root:GetDescendants()) do
+				if object:IsA("GuiButton") and not debugWatched[object] then
+					local isDebug = string.find(string.lower(object.Text or ""), "debug", 1, true) ~= nil
+					if not isDebug then
+						for _, child in ipairs(object:GetChildren()) do
+							if child:IsA("TextLabel") and string.find(string.lower(child.Text or ""), "debug", 1, true) then
+								isDebug = true
+								break
+							end
 						end
 					end
-
-					if hasLayout and hasButtons then
-						local section = Instance.new("Frame")
-						section.Name = "AltasAutomationSection"
-						section.LayoutOrder = 10000
-						section.Size = UDim2.new(1, 0, 0, 176)
-						section.BackgroundTransparency = 1
-						section.Parent = object
-
-						local header = Instance.new("TextLabel")
-						header.Position = UDim2.new(0, 0, 0, 0)
-						header.Size = UDim2.new(1, 0, 0, 16)
-						header.BackgroundTransparency = 1
-						header.Font = Enum.Font.Code
-						header.TextSize = 12
-						header.TextColor3 = Color3.fromRGB(255, 255, 255)
-						header.TextXAlignment = Enum.TextXAlignment.Left
-						header.Text = "Auto Server Hop / Rejoin"
-						header.Parent = section
-
-						createToggle(section, 18, "Auto Server Hop", settings.hopEnabled, function(state)
-							if state then
-								startHop(settings.hopMinutes)
-							else
-								stopHop()
-							end
-						end)
-
-						createSlider(section, 46, "Hop every", 1, 60, settings.hopMinutes, function(value)
-							settings.hopMinutes = value
-							hopRemaining = value * 60
-							dirty = true
-						end)
-
-						createToggle(section, 78, "Auto Rejoin", settings.rejoinEnabled, function(state)
-							if state then
-								startRejoin(settings.rejoinMinutes)
-							else
-								stopRejoin()
-							end
-						end)
-
-						createSlider(section, 106, "Rejoin every", 1, 60, settings.rejoinMinutes, function(value)
-							settings.rejoinMinutes = value
-							rejoinRemaining = value * 60
-							dirty = true
-						end)
-
-						local status = Instance.new("TextLabel")
-						status.Name = "Status"
-						status.Position = UDim2.new(0, 0, 0, 138)
-						status.Size = UDim2.new(1, 0, 0, 14)
-						status.BackgroundTransparency = 1
-						status.Font = Enum.Font.Code
-						status.TextSize = 10
-						status.TextColor3 = Color3.fromRGB(160, 200, 160)
-						status.TextXAlignment = Enum.TextXAlignment.Left
-						status.Text = ""
-						status.Parent = section
-
-						if object:IsA("ScrollingFrame") and object.AutomaticCanvasSize == Enum.AutomaticSize.None then
-							pcall(function()
-								object.CanvasSize = UDim2.new(object.CanvasSize.X.Scale, object.CanvasSize.X.Offset, 0, object.CanvasSize.Y.Offset + 180)
-							end)
-						end
-
-						injected = true
-
-						task.spawn(function()
-							while true do
-								task.wait(1)
-								pcall(function()
-									status.Text = _G.atlasAutomationStatus or ""
-								end)
-							end
-						end)
-
-						return
+					if isDebug then
+						debugWatched[object] = true
+						object.MouseButton1Click:Connect(onDebugClicked)
 					end
 				end
 			end
 		end
 	end
 
+	local function findRenderingPage()
+		for _, root in ipairs(findUiRoots()) do
+			for _, object in ipairs(root:GetDescendants()) do
+				local text = nil
+				if object:IsA("TextLabel") or object:IsA("TextButton") then text = string.lower(object.Text or "") end
+				if text and string.find(text, "render", 1, true)
+					and (string.find(text, "3rd", 1, true) or string.find(text, "3d", 1, true) or string.find(text, "disab", 1, true)) then
+					local ancestor, depth = object.Parent, 0
+					while ancestor and depth < 6 do
+						if (ancestor:IsA("ScrollingFrame") or ancestor:IsA("Frame"))
+							and ancestor:FindFirstChildOfClass("UIListLayout")
+							and ancestor.AbsoluteSize.X > 250 then
+							return ancestor
+						end
+						ancestor = ancestor.Parent
+						depth += 1
+					end
+				end
+			end
+		end
+		return nil
+	end
+
 	task.spawn(function()
 		while true do
-			task.wait(3)
-			pcall(tryInjectDebug)
+			task.wait(0.5)
+			pcall(snapshotPages)
 		end
 	end)
 
 	task.spawn(function()
-		local last = os.clock()
+		while true do
+			task.wait(2)
+			pcall(watchDebugTab)
+			pcall(tryNamedDebug)
+		end
+	end)
 
+	task.spawn(function()
+		task.wait(45)
+		if not injected then pcall(function() injectInto(findRenderingPage()) end) end
+	end)
+
+	task.spawn(function()
+		local last = os.clock()
 		while true do
 			task.wait(1)
-
 			local now = os.clock()
 			local delta = now - last
 			last = now
-
 			if settings.hopEnabled then
 				hopRemaining -= delta
-
 				if hopRemaining <= 0 then
 					hopRemaining = settings.hopMinutes * 60
 					hop()
@@ -913,10 +718,8 @@ do
 			else
 				hopRemaining = settings.hopMinutes * 60
 			end
-
 			if settings.rejoinEnabled then
 				rejoinRemaining -= delta
-
 				if rejoinRemaining <= 0 then
 					rejoinRemaining = settings.rejoinMinutes * 60
 					rejoin()
@@ -924,7 +727,6 @@ do
 			else
 				rejoinRemaining = settings.rejoinMinutes * 60
 			end
-
 			setStatus()
 		end
 	end)
@@ -932,20 +734,11 @@ do
 	task.spawn(function()
 		while true do
 			task.wait(2)
-
-			if dirty then
-				dirty = false
-				save()
-			end
+			if dirty then dirty = false; save() end
 		end
 	end)
 
-	Automation = {
-		settings = settings,
-		hop = hop,
-		rejoin = rejoin,
-	}
-
+	Automation = { settings = settings, hop = hop, rejoin = rejoin }
 	print("[Altas] debug: _G.atlasAutomation.hop(10) | .rejoin(10) | .stopHop() | .stopRejoin() | .status()")
 end
 
@@ -954,72 +747,41 @@ do
 	local player = game:GetService("Players").LocalPlayer
 	local accountId = player and tostring(player.UserId) or "unknown"
 	local configRoot = "atlas/accounts/" .. accountId
-
 	local rawWrite, rawRead = writefile, readfile
 	local rawIsFile, rawDelete = isfile, delfile
 	local rawIsFolder, rawMakeFolder = isfolder, makefolder
 	local rawList = listfiles
-
 	local function scope(path)
-		if type(path) ~= "string" then
-			return path
-		end
-
+		if type(path) ~= "string" then return path end
 		local lowered = string.lower(path)
-
-		if string.find(lowered, "atlas/accounts/", 1, true) then
-			return path
-		end
-		if lowered == "atlas" then
-			return configRoot
-		end
-		if string.sub(lowered, 1, 6) == "atlas/" then
-			return configRoot .. "/" .. string.sub(path, 7)
-		end
-		if string.find(lowered, "atlas", 1, true) == 1 then
-			return configRoot .. "/" .. path
-		end
-
+		if string.find(lowered, "atlas/accounts/", 1, true) then return path end
+		if lowered == "atlas" then return configRoot end
+		if string.sub(lowered, 1, 6) == "atlas/" then return configRoot .. "/" .. string.sub(path, 7) end
+		if string.find(lowered, "atlas", 1, true) == 1 then return configRoot .. "/" .. path end
 		return path
 	end
-
 	if rawMakeFolder then
 		for _, folder in ipairs({ "atlas", "atlas/accounts", configRoot }) do
-			if not (rawIsFolder and rawIsFolder(folder)) then
-				pcall(rawMakeFolder, folder)
-			end
+			if not (rawIsFolder and rawIsFolder(folder)) then pcall(rawMakeFolder, folder) end
 		end
 	end
-
 	if rawList and rawRead and rawWrite and rawIsFile then
 		local ok, entries = pcall(rawList, "atlas")
-
 		if ok and type(entries) == "table" then
 			for _, entry in ipairs(entries) do
 				local lowered = string.lower(entry)
-
-				if string.sub(lowered, -5) == ".json"
-					and not string.find(lowered, "atlas/accounts", 1, true)
-					and not string.find(lowered, "atlascache", 1, true) then
+				if string.sub(lowered, -5) == ".json" and not string.find(lowered, "atlas/accounts", 1, true) and not string.find(lowered, "atlascache", 1, true) then
 					local name = string.match(entry, "([^/\\]+)$")
 					local sourcePath = entry
-
-					if not string.find(lowered, "atlas", 1, true) then
-						sourcePath = "atlas/" .. entry
-					end
-
+					if not string.find(lowered, "atlas", 1, true) then sourcePath = "atlas/" .. entry end
 					if name and not rawIsFile(configRoot .. "/" .. name) then
 						local readOk, data = pcall(rawRead, sourcePath)
-
-						if readOk and type(data) == "string" and #data > 0 then
-							pcall(rawWrite, configRoot .. "/" .. name, data)
-						end
+						if readOk and type(data) == "string" and #data > 0 then pcall(rawWrite, configRoot .. "/" .. name, data) end
 					end
 				end
 			end
 		end
 	end
-
 	if rawWrite then writefile = function(path, data) return rawWrite(scope(path), data) end end
 	if rawRead then readfile = function(path) return rawRead(scope(path)) end end
 	if rawIsFile then isfile = function(path) return rawIsFile(scope(path)) end end
@@ -1037,36 +799,20 @@ local sliderGuard = [==[
 	local maxNumber = tonumber(maxValue) or 0
 	local isWalkSpeed = sliderKey == "walkspeed" or sliderName == "walkspeed" or (string.find(sliderName, "walk", 1, true) and string.find(sliderName, "speed", 1, true))
 	local isTweenSpeed = sliderKey == "tweenspeed" or sliderName == "tweenspeed" or (string.find(sliderName, "tween", 1, true) and string.find(sliderName, "speed", 1, true))
-
-	if isWalkSpeed and maxNumber ~= 90 then
-		maxValue = 90
-	end
-
-	if isTweenSpeed and maxNumber < 100 then
-		maxValue = 100
-	end
-
+	if isWalkSpeed and maxNumber ~= 90 then maxValue = 90 end
+	if isTweenSpeed and maxNumber < 100 then maxValue = 100 end
 	if isWalkSpeed and callback then
 		local userCallback = callback
-
 		callback = function(newValue)
 			userCallback(newValue)
-
 			if cfg and cfg.vars and cfg.vars.walkspeedenabled then
 				pcall(function()
 					local character = game:GetService("Players").LocalPlayer.Character
 					local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-
-					if humanoid then
-						humanoid.WalkSpeed = tonumber(newValue) or humanoid.WalkSpeed
-					end
+					if humanoid then humanoid.WalkSpeed = tonumber(newValue) or humanoid.WalkSpeed end
 				end)
 			end
 		end
-	end
-
-	if _G.atlasSliderLog and (isWalkSpeed or isTweenSpeed) then
-		table.insert(_G.atlasSliderLog, tostring(sliderTitle) .. " " .. tostring(minValue) .. "-" .. tostring(maxValue) .. " key=" .. tostring(configKey))
 	end
 ]==]
 
@@ -1080,100 +826,48 @@ end
 
 local function assetFromWorkspace()
 	local ok, result = pcall(getcustomasset, BG_FILE)
-
-	if ok and type(result) == "string" and #result > 0 then
-		return result
-	end
-
+	if ok and type(result) == "string" and #result > 0 then return result end
 	if getsynasset then
 		local ok2, result2 = pcall(getsynasset, BG_FILE)
-
-		if ok2 and type(result2) == "string" and #result2 > 0 then
-			return result2
-		end
+		if ok2 and type(result2) == "string" and #result2 > 0 then return result2 end
 	end
-
 	return nil
 end
 
 local background = nil
-
 local cached = nil
-
 pcall(function()
-	if isfile and isfile(BG_FILE) then
-		cached = readfile(BG_FILE)
-	end
+	if isfile and isfile(BG_FILE) then cached = readfile(BG_FILE) end
 end)
-
-if isPng(cached) then
-	background = assetFromWorkspace()
-end
-
+if isPng(cached) then background = assetFromWorkspace() end
 if not background then
 	for _, name in ipairs(BG_NAMES) do
-		local ok, data = pcall(function()
-			return game:HttpGet(REPO .. name .. "?v=" .. NONCE)
-		end)
-
+		local ok, data = pcall(function() return game:HttpGet(REPO .. name .. "?v=" .. NONCE) end)
 		if ok and isPng(data) then
 			local wrote = pcall(writefile, BG_FILE, data)
-
-			if wrote then
-				background = assetFromWorkspace()
-			end
-
-			if background then
-				break
-			end
+			if wrote then background = assetFromWorkspace() end
+			if background then break end
 		end
 	end
 end
-
 if not background then
 	local data = nil
-
-	pcall(function()
-		data = readfile(BG_LOCAL)
-	end)
-
+	pcall(function() data = readfile(BG_LOCAL) end)
 	if isPng(data) then
 		local wrote = pcall(writefile, BG_FILE, data)
-
-		if wrote then
-			background = assetFromWorkspace()
-		end
+		if wrote then background = assetFromWorkspace() end
 	end
 end
-
-if background then
-	_G.background = background
-end
+if background then _G.background = background end
 
 _G.unlocktween = true
-
-if getgenv then
-	pcall(function()
-		getgenv().unlocktween = true
-	end)
-end
-
-if getrenv then
-	pcall(function()
-		getrenv().unlocktween = true
-	end)
-end
-
-_G.atlasSliderLog = {}
+if getgenv then pcall(function() getgenv().unlocktween = true end) end
+if getrenv then pcall(function() getrenv().unlocktween = true end) end
 
 local runService = game:GetService("RunService")
 local hudHooked = false
 local set3d = nil
-
-pcall(function()
-	set3d = runService.Set3dRenderingEnabled
-end)
-
+pcall(function() set3d = runService.Set3dRenderingEnabled end)
 if type(hookfunction) == "function" and type(set3d) == "function" then
 	pcall(function()
 		local original
@@ -1181,50 +875,34 @@ if type(hookfunction) == "function" and type(set3d) == "function" then
 			HUD.setHook(enabled)
 			return original(self, enabled, ...)
 		end)
-
 		hudHooked = true
 	end)
 end
 
 local source = game:HttpGet(SOURCE_URL)
-
-if type(source) ~= "string" or #source < 1000 then
-	return notify("main.lua download failed")
-end
+if type(source) ~= "string" or #source < 1000 then return notify("main.lua download failed") end
 
 local dumpNotes = {}
-
 local function dumpAround(marker, path, before, after)
 	local index = string.find(source, marker, 1, true)
-
-	if not index then
-		return false
-	end
-
+	if not index then return false end
 	local first = math.max(1, index - (before or 2500))
 	local last = math.min(#source, index + (after or 3500))
 	local ok = pcall(writefile, path, "-- marker: " .. marker .. "\n" .. string.sub(source, first, last))
-
-	if ok then
-		table.insert(dumpNotes, path)
-	end
-
+	if ok then table.insert(dumpNotes, path) end
 	return ok
 end
-
 if type(writefile) == "function" then
 	if not dumpAround("Disable 3rd Rendering", "atlas_antilag.txt", 3000, 4500) then
 		if not dumpAround("3d Rendering", "atlas_antilag.txt", 3000, 4500) then
 			dumpAround("3D Rendering", "atlas_antilag.txt", 3000, 4500)
 		end
 	end
-
 	dumpAround('"Debug"', "atlas_debug.txt", 2000, 3500)
 end
 
 local titlePatched = false
 source, titlePatched = replaceOnce(source, "local title = _G.title and", "local title = \"Altas 1.0 Modified by rust96\" or _G.title and")
-
 if not titlePatched then
 	source, titlePatched = replaceOnce(source, "\"deobfuscated by skynex - .gg/syncrypt\"", "\"Altas 1.0 Modified by rust96\"")
 end
@@ -1235,16 +913,11 @@ source, tweenClampPatched = replaceOnce(source, "if cfg.vars.tweenspeed > 12 and
 local addSliderNeedle = "folderApi.AddSlider = function(sliderTitle, callback, minValue, maxValue, configSource, configKey, options)"
 local sliderCount = 0
 source, sliderCount = replaceAll(source, addSliderNeedle, addSliderNeedle .. "\n" .. sliderGuard)
-local sliderPatched = sliderCount > 0
 
 source = configShim .. "\n" .. source
 
 local chunk, compileError = loadstring(source)
+if not chunk then return notify("compile error: " .. tostring(compileError)) end
 
-if not chunk then
-	return notify("compile error: " .. tostring(compileError))
-end
-
-notify("Altas loaded | RightShift = HUD | " .. (#dumpNotes > 0 and "dumps ready" or "no dumps"))
-
+notify("Altas loaded | HUD on Disable 3rd Rendering | debug sliders")
 chunk()
