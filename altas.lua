@@ -8,7 +8,7 @@
 --   * walkspeed slider max 180, tween slider max 100, tween clamp unlocked
 --
 -- Run (add ?v= to skip any cached copy):
---   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=3"))()
+--   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=4"))()
 
 local REPO = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/"
 local NONCE = tostring(os.time()) .. tostring(math.random(1000, 9999))
@@ -32,29 +32,6 @@ local function replaceOnce(source, needle, replacement)
 	end
 
 	return string.sub(source, 1, index - 1) .. replacement .. string.sub(source, index + #needle), true
-end
-
--- Sliders are created as AddSlider(title, callback, min, max, configSource, configKey, options).
--- This raises the max that sits directly before the config source and key.
-local function raiseSliderMax(source, key, newMax)
-	local patterns = {
-		"(%d+)(%s*,%s*\"vars\"%s*,%s*\"" .. key .. "\")",
-		"(%d+)(%s*,%s*cfg%.vars%s*,%s*\"" .. key .. "\")",
-	}
-	local changed = false
-
-	for _, pattern in ipairs(patterns) do
-		source = string.gsub(source, pattern, function(maxValue, suffix)
-			if (tonumber(maxValue) or 0) < newMax then
-				changed = true
-				return tostring(newMax) .. suffix
-			end
-
-			return maxValue .. suffix
-		end, 1)
-	end
-
-	return source, changed
 end
 
 local configShim = [==[
@@ -136,6 +113,16 @@ do
 	if rawMakeFolder then makefolder = function(path) return rawMakeFolder(scope(path)) end end
 	if rawIsFolder then isfolder = function(path) return rawIsFolder(scope(path)) end end
 end
+]==]
+
+local sliderGuard = [==[
+	if configKey == "walkspeed" and maxValue < 180 then
+		maxValue = 180
+	end
+
+	if configKey == "tweenspeed" and maxValue < 100 then
+		maxValue = 100
+	end
 ]==]
 
 local BG_FILE = "altas_bg.png"
@@ -235,7 +222,6 @@ if background then
 	_G.background = background
 end
 
--- lifte the script's own tween speed clamp (12 by default)
 _G.unlocktween = true
 
 local source = game:HttpGet(SOURCE_URL)
@@ -251,10 +237,9 @@ if not titlePatched then
 	source, titlePatched = replaceOnce(source, "\"deobfuscated by skynex - .gg/syncrypt\"", "\"Altas 1.0 Modified by rust96\"")
 end
 
-local walkPatched = false
-local tweenPatched = false
-source, walkPatched = raiseSliderMax(source, "walkspeed", 180)
-source, tweenPatched = raiseSliderMax(source, "tweenspeed", 100)
+local addSliderNeedle = "folderApi.AddSlider = function(sliderTitle, callback, minValue, maxValue, configSource, configKey, options)"
+local sliderPatched = false
+source, sliderPatched = replaceOnce(source, addSliderNeedle, addSliderNeedle .. "\n" .. sliderGuard)
 
 source = configShim .. "\n" .. source
 
@@ -264,6 +249,6 @@ if not chunk then
 	return notify("compile error: " .. tostring(compileError))
 end
 
-notify("ws=" .. (walkPatched and "180" or "no match") .. " ts=" .. (tweenPatched and "100" or "no match") .. " bg=" .. (background and "ok" or "fail"))
+notify("sliders=" .. (sliderPatched and "patched" or "NOT patched") .. " bg=" .. (background and "ok" or "fail") .. " title=" .. (titlePatched and "ok" or "fail"))
 
 chunk()
