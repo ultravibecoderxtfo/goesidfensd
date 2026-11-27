@@ -1,8 +1,5 @@
 -- Altas 1.0 Modified by rust96
 -- Run: loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua"))()
---
--- Per-account configs, title, background, walk 90 / tween 100, tween clamp off,
--- black-screen HUD on "Disable 3rd Rendering", auto hop/rejoin in the Debug page.
 
 local REPO = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/"
 local NONCE = tostring(os.time()) .. tostring(math.random(1000, 9999))
@@ -45,19 +42,16 @@ do
 	gui.IgnoreGuiInset = true
 	gui.DisplayOrder = 1000
 	gui.Enabled = false
-
 	pcall(function() gui.Parent = gethui and gethui() or game:GetService("CoreGui") end)
 	if not gui.Parent then pcall(function() gui.Parent = game:GetService("CoreGui") end) end
 
 	local black = Instance.new("Frame")
-	black.Name = "Black"
 	black.Size = UDim2.fromScale(1, 1)
 	black.BackgroundColor3 = Color3.new(0, 0, 0)
 	black.BorderSizePixel = 0
 	black.Parent = gui
 
 	local panel = Instance.new("Frame")
-	panel.Name = "Panel"
 	panel.Position = UDim2.new(0, 24, 0, 24)
 	panel.Size = UDim2.new(0, 340, 0, 0)
 	panel.AutomaticSize = Enum.AutomaticSize.Y
@@ -65,18 +59,15 @@ do
 	panel.BackgroundTransparency = 0.15
 	panel.BorderSizePixel = 0
 	panel.Parent = gui
-
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 6)
 	corner.Parent = panel
-
 	local padding = Instance.new("UIPadding")
 	padding.PaddingTop = UDim.new(0, 10)
 	padding.PaddingBottom = UDim.new(0, 10)
 	padding.PaddingLeft = UDim.new(0, 12)
 	padding.PaddingRight = UDim.new(0, 12)
 	padding.Parent = panel
-
 	local layout = Instance.new("UIListLayout")
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Padding = UDim.new(0, 3)
@@ -133,21 +124,16 @@ do
 
 	local honeyStart = currentHoney()
 
-	local function hiddenRoot()
-		local ok, value = pcall(function() return gethui and gethui() or nil end)
-		if ok then return value end
-		return nil
-	end
-
 	local function candidateRoots()
 		local roots, seen = {}, {}
 		local function add(root)
 			if root and not seen[root] then seen[root] = true; table.insert(roots, root) end
 		end
-		add(hiddenRoot())
+		local ok, hidden = pcall(function() return gethui and gethui() or nil end)
+		if ok then add(hidden) end
 		add(_G.atlas)
-		local ok, coreGui = pcall(function() return game:GetService("CoreGui") end)
-		if ok and coreGui then
+		local okCore, coreGui = pcall(function() return game:GetService("CoreGui") end)
+		if okCore and coreGui then
 			for _, child in ipairs(coreGui:GetChildren()) do
 				if child:IsA("ScreenGui") then add(child) end
 			end
@@ -159,6 +145,36 @@ do
 			end
 		end
 		return roots
+	end
+
+	local function atlasScreen()
+		for _, root in ipairs(candidateRoots()) do
+			for _, object in ipairs(root:GetDescendants()) do
+				if object:IsA("TextLabel") and string.find(object.Text or "", "Altas 1.0 Modified", 1, true) then
+					local ancestor = object
+					while ancestor do
+						if ancestor:IsA("ScreenGui") then return ancestor, object end
+						ancestor = ancestor.Parent
+					end
+				end
+			end
+		end
+		return nil, nil
+	end
+
+	local function ensureAtlasShown()
+		local screen, title = atlasScreen()
+		if screen and not screen.Enabled then screen.Enabled = true end
+		if title then
+			local ancestor, depth = title.Parent, 0
+			while ancestor and depth < 5 do
+				if ancestor:IsA("GuiObject") and ancestor.AbsoluteSize.X > 280 and ancestor.AbsoluteSize.Y > 140 and not ancestor.Visible then
+					ancestor.Visible = true
+				end
+				ancestor = ancestor.Parent
+				depth += 1
+			end
+		end
 	end
 
 	local function lastConsoleLine()
@@ -177,10 +193,7 @@ do
 					for _, child in ipairs(scrolling:GetChildren()) do
 						if child:IsA("TextLabel") and #child.Text > 0 then text = child.Text end
 					end
-					if text then
-						text = string.gsub(text, "^%[[^%]]*%] %[[^%]]*%] ", "")
-						return text
-					end
+					if text then return (string.gsub(text, "^%[[^%]]*%] %[[^%]]*%] ", "")) end
 				end
 			end
 		end
@@ -201,17 +214,18 @@ do
 		rows.heading.Text = "Heading: " .. (heading and string.sub(heading, 1, 42) or "-")
 	end
 
-	local manual = nil
-	local hookVisible = false
+	local manual, hookVisible = nil, false
 
 	local function apply()
 		local visible = manual ~= nil and manual or hookVisible
 		gui.Enabled = visible and true or false
-		if gui.Enabled then pcall(refresh) end
+		if gui.Enabled then
+			pcall(refresh)
+			pcall(ensureAtlasShown)
+		end
 	end
 
-	HUD = {}
-	HUD.gui = gui
+	HUD = { gui = gui }
 	HUD.setHook = function(enabled)
 		hookVisible = not enabled
 		apply()
@@ -223,7 +237,6 @@ do
 	end
 
 	local watched = {}
-
 	local function attach(button)
 		if not button or not button:IsA("GuiButton") or watched[button] then return end
 		watched[button] = true
@@ -235,10 +248,8 @@ do
 
 	local function matchesRenderingToggle(text)
 		if not text then return false end
-		local rendering = string.find(text, "render", 1, true) ~= nil
-		local third = string.find(text, "3rd", 1, true) ~= nil or string.find(text, "3d", 1, true) ~= nil
-		local disable = string.find(text, "disab", 1, true) ~= nil
-		return rendering and (third or disable)
+		return string.find(text, "render", 1, true) ~= nil
+			and (string.find(text, "3rd", 1, true) ~= nil or string.find(text, "3d", 1, true) ~= nil or string.find(text, "disab", 1, true) ~= nil)
 	end
 
 	local function connectRenderingToggle()
@@ -278,7 +289,7 @@ do
 	task.spawn(function()
 		while true do
 			task.wait(1)
-			if gui.Enabled then pcall(refresh) end
+			if gui.Enabled then pcall(refresh); pcall(ensureAtlasShown) end
 		end
 	end)
 end
@@ -293,7 +304,6 @@ do
 	local player = Players.LocalPlayer
 	local accountId = tostring(player.UserId)
 	local settingsPath = "atlas/accounts/" .. accountId .. "/automation.json"
-
 	local settings = { hopEnabled = false, hopMinutes = 10, rejoinEnabled = false, rejoinMinutes = 10 }
 
 	pcall(function()
@@ -317,7 +327,6 @@ do
 	end)
 
 	local dirty = false
-
 	local function save()
 		local ok, encoded = pcall(function() return HttpService:JSONEncode(settings) end)
 		if ok and writefile then pcall(writefile, settingsPath, encoded) end
@@ -374,14 +383,12 @@ do
 		hopRemaining = settings.hopMinutes * 60
 		dirty = true
 		setStatus()
-		notify("auto server hop every " .. settings.hopMinutes .. " min")
 	end
 
 	local function stopHop()
 		settings.hopEnabled = false
 		dirty = true
 		setStatus()
-		notify("auto server hop off")
 	end
 
 	local function startRejoin(minutes)
@@ -390,21 +397,16 @@ do
 		rejoinRemaining = settings.rejoinMinutes * 60
 		dirty = true
 		setStatus()
-		notify("auto rejoin every " .. settings.rejoinMinutes .. " min")
 	end
 
 	local function stopRejoin()
 		settings.rejoinEnabled = false
 		dirty = true
 		setStatus()
-		notify("auto rejoin off")
 	end
 
 	_G.atlasAutomation = {
-		hop = startHop,
-		stopHop = stopHop,
-		rejoin = startRejoin,
-		stopRejoin = stopRejoin,
+		hop = startHop, stopHop = stopHop, rejoin = startRejoin, stopRejoin = stopRejoin,
 		status = function()
 			return { hopEnabled = settings.hopEnabled, hopMinutes = settings.hopMinutes, rejoinEnabled = settings.rejoinEnabled, rejoinMinutes = settings.rejoinMinutes }
 		end,
@@ -438,9 +440,9 @@ do
 		button.TextXAlignment = Enum.TextXAlignment.Left
 		button.Text = "  " .. labelText .. ": " .. (state and "ON" or "OFF")
 		button.Parent = parent
-		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0, 4)
-		corner.Parent = button
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(0, 4)
+		c.Parent = button
 		local on = state
 		button.MouseButton1Click:Connect(function()
 			on = not on
@@ -467,17 +469,17 @@ do
 		bar.BackgroundColor3 = Color3.fromRGB(50, 50, 56)
 		bar.BorderSizePixel = 0
 		bar.Parent = parent
-		local barCorner = Instance.new("UICorner")
-		barCorner.CornerRadius = UDim.new(1, 0)
-		barCorner.Parent = bar
+		local bc = Instance.new("UICorner")
+		bc.CornerRadius = UDim.new(1, 0)
+		bc.Parent = bar
 		local fill = Instance.new("Frame")
 		fill.Size = UDim2.fromScale((initial - minValue) / math.max(maxValue - minValue, 1), 1)
 		fill.BackgroundColor3 = Color3.fromRGB(120, 170, 255)
 		fill.BorderSizePixel = 0
 		fill.Parent = bar
-		local fillCorner = Instance.new("UICorner")
-		fillCorner.CornerRadius = UDim.new(1, 0)
-		fillCorner.Parent = fill
+		local fc = Instance.new("UICorner")
+		fc.CornerRadius = UDim.new(1, 0)
+		fc.Parent = fill
 		local current, dragging = initial, false
 		local function applyX(x)
 			local relative = math.clamp((x - bar.AbsolutePosition.X) / math.max(bar.AbsoluteSize.X, 1), 0, 1)
@@ -510,18 +512,30 @@ do
 	local injected = false
 
 	local function injectInto(page)
-		if injected or not page then return end
-		if page:FindFirstChild("AltasAutomationSection", true) then injected = true; return end
+		if injected or not page or page:FindFirstChild("AltasAutomationSection", true) then return end
 
 		local section = Instance.new("Frame")
 		section.Name = "AltasAutomationSection"
-		section.LayoutOrder = 10000
-		section.Size = UDim2.new(1, 0, 0, 176)
 		section.BackgroundTransparency = 1
+
+		if page:FindFirstChildOfClass("UIListLayout") then
+			section.LayoutOrder = 10000
+			section.Size = UDim2.new(1, 0, 0, 176)
+		else
+			local bottom = 0
+			for _, child in ipairs(page:GetChildren()) do
+				if child:IsA("GuiObject") then
+					local childBottom = child.Position.Y.Offset + child.Size.Y.Offset
+					if childBottom > bottom then bottom = childBottom end
+				end
+			end
+			section.Position = UDim2.new(0, 0, 0, bottom + 12)
+			section.Size = UDim2.new(1, 0, 0, 176)
+		end
+
 		section.Parent = page
 
 		local header = Instance.new("TextLabel")
-		header.Position = UDim2.new(0, 0, 0, 0)
 		header.Size = UDim2.new(1, 0, 0, 16)
 		header.BackgroundTransparency = 1
 		header.Font = Enum.Font.Code
@@ -534,17 +548,14 @@ do
 		createToggle(section, 18, "Auto Server Hop", settings.hopEnabled, function(state)
 			if state then startHop(settings.hopMinutes) else stopHop() end
 		end)
-
 		createSlider(section, 46, "Hop every", 1, 60, settings.hopMinutes, function(value)
 			settings.hopMinutes = value
 			hopRemaining = value * 60
 			dirty = true
 		end)
-
 		createToggle(section, 78, "Auto Rejoin", settings.rejoinEnabled, function(state)
 			if state then startRejoin(settings.rejoinMinutes) else stopRejoin() end
 		end)
-
 		createSlider(section, 106, "Rejoin every", 1, 60, settings.rejoinMinutes, function(value)
 			settings.rejoinMinutes = value
 			rejoinRemaining = value * 60
@@ -552,7 +563,6 @@ do
 		end)
 
 		local status = Instance.new("TextLabel")
-		status.Name = "Status"
 		status.Position = UDim2.new(0, 0, 0, 138)
 		status.Size = UDim2.new(1, 0, 0, 14)
 		status.BackgroundTransparency = 1
@@ -563,9 +573,12 @@ do
 		status.Text = ""
 		status.Parent = section
 
-		if page:IsA("ScrollingFrame") and page.AutomaticCanvasSize == Enum.AutomaticSize.None then
+		if page:IsA("ScrollingFrame") then
 			pcall(function()
-				page.CanvasSize = UDim2.new(page.CanvasSize.X.Scale, page.CanvasSize.X.Offset, 0, page.CanvasSize.Y.Offset + 180)
+				local needed = section.Position.Y.Offset + 196
+				if page.CanvasSize.Y.Offset < needed then
+					page.CanvasSize = UDim2.new(page.CanvasSize.X.Scale, page.CanvasSize.X.Offset, 0, needed)
+				end
 			end)
 		end
 
@@ -579,86 +592,6 @@ do
 		end)
 	end
 
-	local function hasButton(page)
-		for _, child in ipairs(page:GetDescendants()) do
-			if child:IsA("GuiButton") then return true end
-		end
-		return false
-	end
-
-	local function tryNamedDebug()
-		if injected then return end
-		for _, root in ipairs(findUiRoots()) do
-			for _, object in ipairs(root:GetDescendants()) do
-				if (object:IsA("ScrollingFrame") or object:IsA("Frame"))
-					and string.find(string.lower(object.Name), "debug", 1, true)
-					and object:FindFirstChildOfClass("UIListLayout")
-					and hasButton(object) then
-					injectInto(object)
-					return
-				end
-			end
-		end
-	end
-
-	local pageVisible = {}
-
-	local function snapshotPages()
-		for _, root in ipairs(findUiRoots()) do
-			for _, object in ipairs(root:GetDescendants()) do
-				if object:IsA("ScrollingFrame") or (object:IsA("Frame") and object:FindFirstChildOfClass("UIListLayout")) then
-					pageVisible[object] = object.Visible
-				end
-			end
-		end
-	end
-
-	local function tryNewlyVisiblePage()
-		if injected then return end
-		for _, root in ipairs(findUiRoots()) do
-			for _, object in ipairs(root:GetDescendants()) do
-				if (object:IsA("ScrollingFrame") or object:IsA("Frame"))
-					and object.Visible
-					and pageVisible[object] == false
-					and object:FindFirstChildOfClass("UIListLayout")
-					and hasButton(object) then
-					injectInto(object)
-					return
-				end
-			end
-		end
-	end
-
-	local debugWatched = {}
-
-	local function onDebugClicked()
-		task.delay(0.35, function()
-			if not injected then pcall(tryNewlyVisiblePage) end
-		end)
-	end
-
-	local function watchDebugTab()
-		for _, root in ipairs(findUiRoots()) do
-			for _, object in ipairs(root:GetDescendants()) do
-				if object:IsA("GuiButton") and not debugWatched[object] then
-					local isDebug = string.find(string.lower(object.Text or ""), "debug", 1, true) ~= nil
-					if not isDebug then
-						for _, child in ipairs(object:GetChildren()) do
-							if child:IsA("TextLabel") and string.find(string.lower(child.Text or ""), "debug", 1, true) then
-								isDebug = true
-								break
-							end
-						end
-					end
-					if isDebug then
-						debugWatched[object] = true
-						object.MouseButton1Click:Connect(onDebugClicked)
-					end
-				end
-			end
-		end
-	end
-
 	local function findRenderingPage()
 		for _, root in ipairs(findUiRoots()) do
 			for _, object in ipairs(root:GetDescendants()) do
@@ -667,12 +600,9 @@ do
 				if text and string.find(text, "render", 1, true)
 					and (string.find(text, "3rd", 1, true) or string.find(text, "3d", 1, true) or string.find(text, "disab", 1, true)) then
 					local ancestor, depth = object.Parent, 0
-					while ancestor and depth < 6 do
-						if (ancestor:IsA("ScrollingFrame") or ancestor:IsA("Frame"))
-							and ancestor:FindFirstChildOfClass("UIListLayout")
-							and ancestor.AbsoluteSize.X > 250 then
-							return ancestor
-						end
+					while ancestor and depth < 8 do
+						if ancestor:IsA("ScrollingFrame") then return ancestor end
+						if ancestor:IsA("Frame") and #ancestor:GetChildren() > 6 then return ancestor end
 						ancestor = ancestor.Parent
 						depth += 1
 					end
@@ -684,22 +614,13 @@ do
 
 	task.spawn(function()
 		while true do
-			task.wait(0.5)
-			pcall(snapshotPages)
-		end
-	end)
-
-	task.spawn(function()
-		while true do
 			task.wait(2)
-			pcall(watchDebugTab)
-			pcall(tryNamedDebug)
-		end
-	end)
 
-	task.spawn(function()
-		task.wait(45)
-		if not injected then pcall(function() injectInto(findRenderingPage()) end) end
+			if injected then break end
+
+			local ok, page = pcall(findRenderingPage)
+			if ok and page then pcall(injectInto, page) end
+		end
 	end)
 
 	task.spawn(function()
@@ -739,7 +660,6 @@ do
 	end)
 
 	Automation = { settings = settings, hop = hop, rejoin = rejoin }
-	print("[Altas] debug: _G.atlasAutomation.hop(10) | .rejoin(10) | .stopHop() | .stopRejoin() | .status()")
 end
 
 local configShim = [==[
@@ -834,8 +754,7 @@ local function assetFromWorkspace()
 	return nil
 end
 
-local background = nil
-local cached = nil
+local background, cached = nil, nil
 pcall(function()
 	if isfile and isfile(BG_FILE) then cached = readfile(BG_FILE) end
 end)
@@ -865,7 +784,6 @@ if getgenv then pcall(function() getgenv().unlocktween = true end) end
 if getrenv then pcall(function() getrenv().unlocktween = true end) end
 
 local runService = game:GetService("RunService")
-local hudHooked = false
 local set3d = nil
 pcall(function() set3d = runService.Set3dRenderingEnabled end)
 if type(hookfunction) == "function" and type(set3d) == "function" then
@@ -875,31 +793,11 @@ if type(hookfunction) == "function" and type(set3d) == "function" then
 			HUD.setHook(enabled)
 			return original(self, enabled, ...)
 		end)
-		hudHooked = true
 	end)
 end
 
 local source = game:HttpGet(SOURCE_URL)
 if type(source) ~= "string" or #source < 1000 then return notify("main.lua download failed") end
-
-local dumpNotes = {}
-local function dumpAround(marker, path, before, after)
-	local index = string.find(source, marker, 1, true)
-	if not index then return false end
-	local first = math.max(1, index - (before or 2500))
-	local last = math.min(#source, index + (after or 3500))
-	local ok = pcall(writefile, path, "-- marker: " .. marker .. "\n" .. string.sub(source, first, last))
-	if ok then table.insert(dumpNotes, path) end
-	return ok
-end
-if type(writefile) == "function" then
-	if not dumpAround("Disable 3rd Rendering", "atlas_antilag.txt", 3000, 4500) then
-		if not dumpAround("3d Rendering", "atlas_antilag.txt", 3000, 4500) then
-			dumpAround("3D Rendering", "atlas_antilag.txt", 3000, 4500)
-		end
-	end
-	dumpAround('"Debug"', "atlas_debug.txt", 2000, 3500)
-end
 
 local titlePatched = false
 source, titlePatched = replaceOnce(source, "local title = _G.title and", "local title = \"Altas 1.0 Modified by rust96\" or _G.title and")
@@ -907,17 +805,15 @@ if not titlePatched then
 	source, titlePatched = replaceOnce(source, "\"deobfuscated by skynex - .gg/syncrypt\"", "\"Altas 1.0 Modified by rust96\"")
 end
 
-local tweenClampPatched = false
-source, tweenClampPatched = replaceOnce(source, "if cfg.vars.tweenspeed > 12 and _G.unlocktween ~= true then", "if false then")
+source, _ = replaceOnce(source, "if cfg.vars.tweenspeed > 12 and _G.unlocktween ~= true then", "if false then")
 
 local addSliderNeedle = "folderApi.AddSlider = function(sliderTitle, callback, minValue, maxValue, configSource, configKey, options)"
-local sliderCount = 0
-source, sliderCount = replaceAll(source, addSliderNeedle, addSliderNeedle .. "\n" .. sliderGuard)
+source = replaceAll(source, addSliderNeedle, addSliderNeedle .. "\n" .. sliderGuard)
 
 source = configShim .. "\n" .. source
 
 local chunk, compileError = loadstring(source)
 if not chunk then return notify("compile error: " .. tostring(compileError)) end
 
-notify("Altas loaded | HUD on Disable 3rd Rendering | debug sliders")
+notify("Altas loaded | hop/rejoin on the Antilag page")
 chunk()
