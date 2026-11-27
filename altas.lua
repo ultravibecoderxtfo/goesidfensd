@@ -12,7 +12,9 @@
 --   * auto server hop / rejoin, driven from the debug console (no extra UI)
 --
 -- Run (add ?v= to skip any cached copy):
---   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=11"))()
+--   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=12"))()
+--
+-- HUD: shows over the antilag black screen, or press RightShift to open it any time.
 --
 -- Debug console:
 --   _G.atlasAutomation.hop(10)      auto server hop every 10 min
@@ -68,6 +70,7 @@ local HUD
 
 do
 	local Players = game:GetService("Players")
+	local UserInputService = game:GetService("UserInputService")
 	local player = Players.LocalPlayer
 	local sessionStart = os.clock()
 
@@ -133,7 +136,7 @@ do
 
 	local rows = {}
 
-	addLabel("Altas 1.0 - Anti-Lag", 15, Color3.fromRGB(255, 255, 255))
+	addLabel("Altas 1.0 - Anti-Lag (RightShift)", 14, Color3.fromRGB(255, 255, 255))
 	rows.uptime = addLabel("Uptime: 00:00:00")
 	rows.server = addLabel("Server Uptime: 00:00:00")
 	rows.honey = addLabel("Session Honey: 0")
@@ -180,52 +183,96 @@ do
 
 	local honeyStart = currentHoney()
 
+	local function hiddenRoot()
+		local ok, value = pcall(function()
+			return gethui and gethui() or nil
+		end)
+
+		if ok then
+			return value
+		end
+
+		return nil
+	end
+
+	local function candidateRoots()
+		local roots = {}
+		local seen = {}
+
+		local function add(root)
+			if root and not seen[root] then
+				seen[root] = true
+				table.insert(roots, root)
+			end
+		end
+
+		add(hiddenRoot())
+		add(_G.atlas)
+
+		local ok, coreGui = pcall(function()
+			return game:GetService("CoreGui")
+		end)
+
+		if ok and coreGui then
+			for _, child in ipairs(coreGui:GetChildren()) do
+				if child:IsA("ScreenGui") then
+					add(child)
+				end
+			end
+		end
+
+		local playerGui = player:FindFirstChild("PlayerGui")
+
+		if playerGui then
+			for _, child in ipairs(playerGui:GetChildren()) do
+				if child:IsA("ScreenGui") then
+					add(child)
+				end
+			end
+		end
+
+		return roots
+	end
+
 	local function lastConsoleLine()
-		local root = _G.atlas
+		for _, root in ipairs(candidateRoots()) do
+			local bar = nil
 
-		if not root then
-			return nil
-		end
+			for _, object in ipairs(root:GetDescendants()) do
+				if object:IsA("TextLabel") and object.Text == "Atlas Console" then
+					bar = object
+					break
+				end
+			end
 
-		local bar = nil
+			if bar and bar.Parent and bar.Parent.Parent then
+				local scrolling = nil
 
-		for _, object in ipairs(root:GetDescendants()) do
-			if object:IsA("TextLabel") and object.Text == "Atlas Console" then
-				bar = object
-				break
+				for _, object in ipairs(bar.Parent.Parent:GetDescendants()) do
+					if object:IsA("ScrollingFrame") then
+						scrolling = object
+						break
+					end
+				end
+
+				if scrolling then
+					local text = nil
+
+					for _, child in ipairs(scrolling:GetChildren()) do
+						if child:IsA("TextLabel") and #child.Text > 0 then
+							text = child.Text
+						end
+					end
+
+					if text then
+						text = string.gsub(text, "^%[[^%]]*%] %[[^%]]*%] ", "")
+						return text
+					end
+				end
 			end
 		end
 
-		if not bar or not bar.Parent or not bar.Parent.Parent then
-			return nil
-		end
-
-		local scrolling = nil
-
-		for _, object in ipairs(bar.Parent.Parent:GetDescendants()) do
-			if object:IsA("ScrollingFrame") then
-				scrolling = object
-				break
-			end
-		end
-
-		if not scrolling then
-			return nil
-		end
-
-		local text = nil
-
-		for _, child in ipairs(scrolling:GetChildren()) do
-			if child:IsA("TextLabel") and #child.Text > 0 then
-				text = child.Text
-			end
-		end
-
-		if text then
-			text = string.gsub(text, "^%[[^%]]*%] %[[^%]]*%] ", "")
-		end
-
-		return text
+		return nil
 	end
 
 	local function refresh()
@@ -270,49 +317,7 @@ do
 	end
 
 	local function blackScreenShowing()
-		local roots = {}
-		local seen = {}
-
-		local function addRoot(root)
-			if root and not seen[root] then
-				seen[root] = true
-				table.insert(roots, root)
-			end
-		end
-
-		addRoot(_G.atlas)
-
-		if _G.atlas and _G.atlas.Parent then
-			for _, sibling in ipairs(_G.atlas.Parent:GetChildren()) do
-				if sibling:IsA("ScreenGui") then
-					addRoot(sibling)
-				end
-			end
-		end
-
-		local ok, coreGui = pcall(function()
-			return game:GetService("CoreGui")
-		end)
-
-		if ok and coreGui then
-			for _, child in ipairs(coreGui:GetChildren()) do
-				if child:IsA("ScreenGui") then
-					addRoot(child)
-				end
-			end
-		end
-
-		local playerGui = player:FindFirstChild("PlayerGui")
-
-		if playerGui then
-			for _, child in ipairs(playerGui:GetChildren()) do
-				if child:IsA("ScreenGui") then
-					addRoot(child)
-				end
-			end
-		end
-
-		for _, root in ipairs(roots) do
+		for _, root in ipairs(candidateRoots()) do
 			for _, object in ipairs(root:GetDescendants()) do
 				if isBlackFullScreen(object) then
 					return true
@@ -354,6 +359,17 @@ do
 		manual = visible
 		apply()
 	end
+
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed then
+			return
+		end
+
+		if input.KeyCode == Enum.KeyCode.RightShift then
+			manual = not gui.Enabled
+			apply()
+		end
+	end)
 
 	task.spawn(function()
 		while true do
@@ -834,11 +850,16 @@ _G.atlasSliderLog = {}
 
 local runService = game:GetService("RunService")
 local hudHooked = false
+local set3d = nil
 
-if type(hookfunction) == "function" and type(runService.Set3dRenderingEnabled) == "function" then
+pcall(function()
+	set3d = runService.Set3dRenderingEnabled
+end)
+
+if type(hookfunction) == "function" and type(set3d) == "function" then
 	pcall(function()
 		local original
-		original = hookfunction(runService.Set3dRenderingEnabled, function(self, enabled, ...)
+		original = hookfunction(set3d, function(self, enabled, ...)
 			HUD.setHook(enabled)
 			return original(self, enabled, ...)
 		end)
@@ -851,6 +872,37 @@ local source = game:HttpGet(SOURCE_URL)
 
 if type(source) ~= "string" or #source < 1000 then
 	return notify("main.lua download failed")
+end
+
+-- Dump the antilag and debug sections so they can be uploaded for exact wiring.
+local dumpNotes = {}
+
+local function dumpAround(marker, path, before, after)
+	local index = string.find(source, marker, 1, true)
+
+	if not index then
+		return false
+	end
+
+	local first = math.max(1, index - (before or 2500))
+	local last = math.min(#source, index + (after or 3500))
+	local ok = pcall(writefile, path, "-- marker: " .. marker .. "\n" .. string.sub(source, first, last))
+
+	if ok then
+		table.insert(dumpNotes, path)
+	end
+
+	return ok
+end
+
+if type(writefile) == "function" then
+	if not dumpAround("Disable 3rd Rendering", "atlas_antilag.txt", 3000, 4500) then
+		if not dumpAround("3d Rendering", "atlas_antilag.txt", 3000, 4500) then
+			dumpAround("3D Rendering", "atlas_antilag.txt", 3000, 4500)
+		end
+	end
+
+	dumpAround('"Debug"', "atlas_debug.txt", 2000, 3500)
 end
 
 local titlePatched = false
@@ -876,6 +928,6 @@ if not chunk then
 	return notify("compile error: " .. tostring(compileError))
 end
 
-notify("walk=90 tween=100 hud=" .. (hudHooked and "hooked" or "auto-detect") .. " hop/rejoin in debug console")
+notify("RightShift = HUD | dumps: " .. (#dumpNotes > 0 and table.concat(dumpNotes, " ") or "none"))
 
 chunk()
