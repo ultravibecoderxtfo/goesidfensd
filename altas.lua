@@ -8,7 +8,7 @@
 --   * walkspeed slider max 180, tween slider max 100, tween clamp unlocked
 --
 -- Run (add ?v= to skip any cached copy):
---   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=4"))()
+--   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=5"))()
 
 local REPO = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/"
 local NONCE = tostring(os.time()) .. tostring(math.random(1000, 9999))
@@ -32,6 +32,25 @@ local function replaceOnce(source, needle, replacement)
 	end
 
 	return string.sub(source, 1, index - 1) .. replacement .. string.sub(source, index + #needle), true
+end
+
+local function replaceAll(source, needle, replacement)
+	local count = 0
+	local index = 1
+
+	while true do
+		local start = string.find(source, needle, index, true)
+
+		if not start then
+			break
+		end
+
+		source = string.sub(source, 1, start - 1) .. replacement .. string.sub(source, start + #needle)
+		index = start + #replacement
+		count += 1
+	end
+
+	return source, count
 end
 
 local configShim = [==[
@@ -116,12 +135,23 @@ end
 ]==]
 
 local sliderGuard = [==[
-	if configKey == "walkspeed" and maxValue < 180 then
+	local sliderLabel = string.lower(tostring(sliderTitle or ""))
+	local sliderName = string.gsub(sliderLabel, "%s+", "")
+	local sliderKey = string.lower(tostring(configKey or ""))
+	local maxNumber = tonumber(maxValue) or 0
+	local isWalkSpeed = sliderKey == "walkspeed" or sliderName == "walkspeed" or (string.find(sliderName, "walk", 1, true) and string.find(sliderName, "speed", 1, true))
+	local isTweenSpeed = sliderKey == "tweenspeed" or sliderName == "tweenspeed" or (string.find(sliderName, "tween", 1, true) and string.find(sliderName, "speed", 1, true))
+
+	if isWalkSpeed and maxNumber < 180 then
 		maxValue = 180
 	end
 
-	if configKey == "tweenspeed" and maxValue < 100 then
+	if isTweenSpeed and maxNumber < 100 then
 		maxValue = 100
+	end
+
+	if _G.atlasSliderLog and (isWalkSpeed or isTweenSpeed) then
+		table.insert(_G.atlasSliderLog, tostring(sliderTitle) .. " " .. tostring(minValue) .. "-" .. tostring(maxValue) .. " key=" .. tostring(configKey))
 	end
 ]==]
 
@@ -223,6 +253,7 @@ if background then
 end
 
 _G.unlocktween = true
+_G.atlasSliderLog = {}
 
 local source = game:HttpGet(SOURCE_URL)
 
@@ -238,8 +269,9 @@ if not titlePatched then
 end
 
 local addSliderNeedle = "folderApi.AddSlider = function(sliderTitle, callback, minValue, maxValue, configSource, configKey, options)"
-local sliderPatched = false
-source, sliderPatched = replaceOnce(source, addSliderNeedle, addSliderNeedle .. "\n" .. sliderGuard)
+local sliderCount = 0
+source, sliderCount = replaceAll(source, addSliderNeedle, addSliderNeedle .. "\n" .. sliderGuard)
+local sliderPatched = sliderCount > 0
 
 source = configShim .. "\n" .. source
 
@@ -249,6 +281,16 @@ if not chunk then
 	return notify("compile error: " .. tostring(compileError))
 end
 
-notify("sliders=" .. (sliderPatched and "patched" or "NOT patched") .. " bg=" .. (background and "ok" or "fail") .. " title=" .. (titlePatched and "ok" or "fail"))
+task.delay(8, function()
+	local entries = _G.atlasSliderLog
+
+	if type(entries) == "table" and #entries > 0 then
+		notify("speed sliders: " .. table.concat(entries, " | "))
+	else
+		notify("no speed sliders were created")
+	end
+end)
+
+notify("sliders=" .. (sliderPatched and ("patched x" .. sliderCount) or "NOT patched") .. " bg=" .. (background and "ok" or "fail") .. " title=" .. (titlePatched and "ok" or "fail"))
 
 chunk()
