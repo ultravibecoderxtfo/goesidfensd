@@ -1,15 +1,38 @@
 -- Stable Altas entry. This URL never needs to change again:
 -- loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/run.lua"))()
--- It always downloads the newest altas.lua, bypassing GitHub's 5 minute raw cache.
 
 local BASE = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua"
 local TOPIC = "altasdiag-rust96-9c41"
+local COUNTER = "https://api.counterapi.dev/v1/altasdiag-rust96/run/up"
 
 local function notify(text)
 	pcall(function()
 		game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Altas", Text = tostring(text), Duration = 8 })
 	end)
 end
+
+-- GET ping: works even in executors without request/POST support.
+pcall(function()
+	game:HttpGet(COUNTER)
+end)
+
+local function publish(message)
+	pcall(function()
+		local body = game:GetService("HttpService"):JSONEncode({ topic = TOPIC, message = string.sub(message, 1, 3500) })
+		local requestFn = request or (syn and syn.request) or http_request or httprequest
+
+		if type(requestFn) == "function" then
+			requestFn({
+				Url = "https://ntfy.sh",
+				Method = "POST",
+				Headers = { ["Content-Type"] = "application/json" },
+				Body = body,
+			})
+		end
+	end)
+end
+
+publish("loader start " .. tostring(os.time()))
 
 local url = BASE .. "?v=" .. tostring(os.time()) .. tostring(math.random(100000, 999999))
 local ok, source = pcall(function()
@@ -18,11 +41,11 @@ end)
 
 if not ok or type(source) ~= "string" or #source < 100 then
 	notify("loader download failed: " .. tostring(source))
+	publish("download failed: " .. tostring(source))
 	return
 end
 
--- Report the UI control layout once, so the Debug tab can be wired exactly.
-task.delay(20, function()
+task.delay(12, function()
 	pcall(function()
 		local roots = {}
 		local okHidden, hidden = pcall(function()
@@ -71,21 +94,7 @@ task.delay(20, function()
 			end
 		end
 
-		local body = game:GetService("HttpService"):JSONEncode({
-			topic = TOPIC,
-			message = string.sub(table.concat(lines, "\n"), 1, 3500),
-		})
-
-		local requestFn = request or (syn and syn.request) or http_request or httprequest
-
-		if type(requestFn) == "function" then
-			requestFn({
-				Url = "https://ntfy.sh",
-				Method = "POST",
-				Headers = { ["Content-Type"] = "application/json" },
-				Body = body,
-			})
-		end
+		publish("UI " .. #lines .. "\n" .. table.concat(lines, "\n"))
 	end)
 end)
 
@@ -93,8 +102,10 @@ local chunk, err = loadstring(source)
 
 if not chunk then
 	notify("loader compile error: " .. tostring(err))
+	publish("compile error: " .. tostring(err))
 	return
 end
 
 notify("Altas loaded at " .. tostring(os.time()))
+publish("altas executed " .. tostring(os.time()))
 chunk()
