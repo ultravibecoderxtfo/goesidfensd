@@ -8,9 +8,10 @@
 --   * walkspeed slider max 90, tween slider max 100
 --   * tween speed clamp removed (not just unlocked)
 --   * walk slider applies WalkSpeed on every change, up and down
+--   * black-screen anti-lag HUD with uptime, server uptime, honey, rate, heading
 --
 -- Run (add ?v= to skip any cached copy):
---   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=7"))()
+--   loadstring(game:HttpGet("https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/altas.lua?v=8"))()
 
 local REPO = "https://raw.githubusercontent.com/ultravibecoderxtfo/goesidfensd/main/"
 local NONCE = tostring(os.time()) .. tostring(math.random(1000, 9999))
@@ -53,6 +54,211 @@ local function replaceAll(source, needle, replacement)
 	end
 
 	return source, count
+end
+
+local HUD
+
+do
+	local Players = game:GetService("Players")
+	local player = Players.LocalPlayer
+	local sessionStart = os.clock()
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "AltasAntiLagHud"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.DisplayOrder = 100
+	gui.Enabled = false
+	gui.Parent = gethui and gethui() or game:GetService("CoreGui")
+
+	local black = Instance.new("Frame")
+	black.Name = "Black"
+	black.Size = UDim2.fromScale(1, 1)
+	black.BackgroundColor3 = Color3.new(0, 0, 0)
+	black.BorderSizePixel = 0
+	black.Parent = gui
+
+	local panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.Position = UDim2.new(0, 24, 0, 24)
+	panel.Size = UDim2.new(0, 340, 0, 0)
+	panel.AutomaticSize = Enum.AutomaticSize.Y
+	panel.BackgroundColor3 = Color3.fromRGB(12, 12, 14)
+	panel.BackgroundTransparency = 0.15
+	panel.BorderSizePixel = 0
+	panel.Parent = gui
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 6)
+	corner.Parent = panel
+
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0, 10)
+	padding.PaddingBottom = UDim.new(0, 10)
+	padding.PaddingLeft = UDim.new(0, 12)
+	padding.PaddingRight = UDim.new(0, 12)
+	padding.Parent = panel
+
+	local layout = Instance.new("UIListLayout")
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Padding = UDim.new(0, 3)
+	layout.Parent = panel
+
+	local order = 0
+
+	local function addLabel(text, size, color)
+		order += 1
+
+		local label = Instance.new("TextLabel")
+		label.LayoutOrder = order
+		label.BackgroundTransparency = 1
+		label.Font = Enum.Font.Code
+		label.TextSize = size or 14
+		label.TextColor3 = color or Color3.fromRGB(240, 240, 240)
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.Text = text
+		label.Size = UDim2.new(1, 0, 0, (size or 14) + 4)
+		label.Parent = panel
+
+		return label
+	end
+
+	local rows = {}
+
+	addLabel("Altas 1.0 - Anti-Lag", 15, Color3.fromRGB(255, 255, 255))
+	rows.uptime = addLabel("Uptime: 00:00:00")
+	rows.server = addLabel("Server Uptime: 00:00:00")
+	rows.honey = addLabel("Session Honey: 0")
+	rows.rate = addLabel("Honey per Hour: 0")
+	rows.heading = addLabel("Heading: -", 13, Color3.fromRGB(180, 220, 255))
+
+	local function formatTime(seconds)
+		seconds = math.max(0, math.floor(tonumber(seconds) or 0))
+		return string.format("%02d:%02d:%02d", seconds // 3600, (seconds % 3600) // 60, seconds % 60)
+	end
+
+	local function formatNumber(value)
+		value = tonumber(value) or 0
+
+		local suffixes = { "", "k", "M", "B", "T", "Qd", "Qn", "Sx", "Sp", "O", "N" }
+		local index = 1
+		local absolute = math.abs(value)
+
+		while absolute >= 1000 and index < #suffixes do
+			absolute /= 1000
+			value /= 1000
+			index += 1
+		end
+
+		if index == 1 then
+			return tostring(math.floor(value))
+		end
+
+		return string.format("%.2f%s", value, suffixes[index])
+	end
+
+	local function currentHoney()
+		local ok, value = pcall(function()
+			return player.CoreStats.Honey.Value
+		end)
+
+		if ok and type(value) == "number" then
+			return value
+		end
+
+		return nil
+	end
+
+	local honeyStart = currentHoney()
+
+	local function lastConsoleLine()
+		local root = _G.atlas
+
+		if not root then
+			return nil
+		end
+
+		local bar = nil
+
+		for _, object in ipairs(root:GetDescendants()) do
+			if object:IsA("TextLabel") and object.Text == "Atlas Console" then
+				bar = object
+				break
+			end
+		end
+
+		if not bar or not bar.Parent or not bar.Parent.Parent then
+			return nil
+		end
+
+		local scrolling = nil
+
+		for _, object in ipairs(bar.Parent.Parent:GetDescendants()) do
+			if object:IsA("ScrollingFrame") then
+				scrolling = object
+				break
+			end
+		end
+
+		if not scrolling then
+			return nil
+		end
+
+		local text = nil
+
+		for _, child in ipairs(scrolling:GetChildren()) do
+			if child:IsA("TextLabel") and #child.Text > 0 then
+				text = child.Text
+			end
+		end
+
+		if text then
+			text = string.gsub(text, "^%[[^%]]*%] %[[^%]]*%] ", "")
+		end
+
+		return text
+	end
+
+	local function refresh()
+		local session = os.clock() - sessionStart
+		local honey = currentHoney()
+		local gained = 0
+
+		if honey and honeyStart then
+			gained = honey - honeyStart
+		end
+
+		rows.uptime.Text = "Uptime: " .. formatTime(session)
+		rows.server.Text = "Server Uptime: " .. formatTime(workspace.DistributedGameTime)
+		rows.honey.Text = "Session Honey: " .. formatNumber(gained)
+		rows.rate.Text = "Honey per Hour: " .. formatNumber(session > 5 and gained / (session / 3600) or 0)
+
+		local heading = lastConsoleLine()
+		rows.heading.Text = "Heading: " .. (heading and string.sub(heading, 1, 42) or "-")
+	end
+
+	HUD = {}
+	HUD.gui = gui
+	HUD.show = function(visible)
+		gui.Enabled = visible and true or false
+
+		if gui.Enabled then
+			pcall(refresh)
+		end
+	end
+	HUD.refresh = refresh
+
+	_G.atlasHud = HUD.show
+
+	task.spawn(function()
+		while true do
+			task.wait(1)
+
+			if gui.Enabled then
+				pcall(refresh)
+			end
+		end
+	end)
 end
 
 local configShim = [==[
@@ -203,7 +409,6 @@ local function assetFromWorkspace()
 end
 
 local background = nil
-local reason = "no source"
 
 local cached = nil
 
@@ -215,12 +420,6 @@ end)
 
 if isPng(cached) then
 	background = assetFromWorkspace()
-
-	if background then
-		reason = "cache, " .. #cached .. " bytes"
-	else
-		reason = "cache present, getcustomasset failed"
-	end
 end
 
 if not background then
@@ -234,18 +433,11 @@ if not background then
 
 			if wrote then
 				background = assetFromWorkspace()
-
-				if background then
-					reason = name .. ", " .. #data .. " bytes"
-					break
-				end
-
-				reason = name .. ": getcustomasset failed"
-			else
-				reason = name .. ": writefile failed"
 			end
-		else
-			reason = name .. ": " .. tostring(ok and "not a PNG" or data)
+
+			if background then
+				break
+			end
 		end
 	end
 end
@@ -262,9 +454,6 @@ if not background then
 
 		if wrote then
 			background = assetFromWorkspace()
-			reason = background and ("local file, " .. #data .. " bytes") or "local file: getcustomasset failed"
-		else
-			reason = "local file: writefile failed"
 		end
 	end
 end
@@ -288,6 +477,20 @@ if getrenv then
 end
 
 _G.atlasSliderLog = {}
+
+local runService = game:GetService("RunService")
+local hudHooked = false
+
+if hookfunction and runService.Set3dRenderingEnabled then
+	hudHooked = pcall(function()
+		local original = hookfunction(runService.Set3dRenderingEnabled, function(self, enabled, ...)
+			HUD.show(not enabled)
+			return original(self, enabled, ...)
+		end)
+
+		_G.atlasHudOriginalSet3d = original
+	end)
+end
 
 local source = game:HttpGet(SOURCE_URL)
 
@@ -318,16 +521,6 @@ if not chunk then
 	return notify("compile error: " .. tostring(compileError))
 end
 
-task.delay(8, function()
-	local entries = _G.atlasSliderLog
-
-	if type(entries) == "table" and #entries > 0 then
-		notify("speed sliders: " .. table.concat(entries, " | "))
-	else
-		notify("no speed sliders were created")
-	end
-end)
-
-notify("walk=90 tween=100 clamp=" .. (tweenClampPatched and "off" or "still on") .. " bg=" .. (background and "ok" or "fail"))
+notify("walk=90 tween=100 hud=" .. (hudHooked and "hooked" or "manual (_G.atlasHud)") .. " bg=" .. (background and "ok" or "fail"))
 
 chunk()
